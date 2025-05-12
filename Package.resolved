@@ -30,7 +30,7 @@
       },
       {
         "package": "swift-dependencies",
-        "repositoryURL": "git@github.com:pointfreeco/swift-dependencies.git",
+        "repositoryURL": "https://github.com/pointfreeco/swift-dependencies.git",
         "state": {
           "branch": null,
           "revision": "ec2862d1364536fc22ec56a3094e7a034bbc7da8",
@@ -48,7 +48,7 @@
       },
       {
         "package": "versioning",
-        "repositoryURL": "git@github.com:nashysolutions/versioning.git",
+        "repositoryURL": "https://github.com/nashysolutions/versioning.git",
         "state": {
           "branch": null,
           "revision": "17445660bf8eb496a307b57d6e3049ce58879ee5",
