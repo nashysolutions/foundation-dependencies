@@ -6,9 +6,9 @@ let package = Package(
     name: "foundation-dependencies",
     platforms: [
         .iOS(.v13),
-        .tvOS(.v12),
+        .tvOS(.v13),
         .macOS(.v11),
-        .watchOS(.v4)
+        .watchOS(.v6)
     ],
     products: [
         .library(
