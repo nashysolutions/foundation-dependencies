@@ -97,4 +97,20 @@ public extension XcodeBundle {
             return buildNumber
         }
     }
+    
+    /// Returns an image asset with the specified name from the current bundle.
+    ///
+    /// - Parameter name: The name of the image asset.
+    /// - Returns: An `ImageAsset` representing the requested image.
+    static func asset(named name: String) -> ImageAsset {
+        ImageAsset(name: name, bundle: bundle)
+    }
+
+    /// Returns a colour asset with the specified name from the current bundle.
+    ///
+    /// - Parameter name: The name of the colour asset.
+    /// - Returns: A `ColorAsset` representing the requested colour.
+    static func color(named name: String) -> ColorAsset {
+        ColorAsset(name: name, bundle: bundle)
+    }
 }
