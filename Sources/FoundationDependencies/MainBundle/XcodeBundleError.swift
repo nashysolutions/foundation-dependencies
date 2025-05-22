@@ -14,8 +14,7 @@ public enum XcodeBundleError: LocalizedError {
     ///
     /// - Parameters:
     ///   - name: The name of the missing resource.
-    ///   - fileExtension: The file extension of the missing resource.
-    case resourceNotFound(name: String, fileExtension: String)
+    case resourceNotFound(name: String)
     
     /// Indicates that the bundle identifier is missing.
     case bundleIdentifierMissing
@@ -42,8 +41,8 @@ public enum XcodeBundleError: LocalizedError {
     /// A human-readable description of the error.
     public var errorDescription: String? {
         switch self {
-        case let .resourceNotFound(name, fileExtension):
-            return "Resource \(name).\(fileExtension) not found in bundle."
+        case let .resourceNotFound(name):
+            return "Resource \(name) not found in bundle."
         case .bundleIdentifierMissing:
             return "Bundle identifier is missing."
         case .bundleNameMissing:

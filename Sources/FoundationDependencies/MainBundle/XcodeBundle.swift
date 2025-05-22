@@ -32,7 +32,7 @@ public extension XcodeBundle {
     var urlForResource: @Sendable (_ fileName: String, _ fileExtension: String) throws -> URL {
         return { fileName, fileExtension in
             guard let url = Self.bundle.url(forResource: fileName, withExtension: fileExtension) else {
-                throw XcodeBundleError.resourceNotFound(name: fileName, fileExtension: fileExtension)
+                throw XcodeBundleError.resourceNotFound(name: fileName + fileExtension)
             }
             return url
         }
