@@ -56,7 +56,7 @@ public extension ImageAsset {
     ///
     /// This is only available on platforms that support `UIKit`.
     var pngData: Data? {
-        let image = UIImage(named: name, in: bundle, compatibleWith: nil)
+        let image = UIImage(named: name, in: bundle, with: nil)
         return image?.pngData()
     }
 }
