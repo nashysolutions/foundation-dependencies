@@ -48,16 +48,14 @@ public struct MainBundleClient: BundleResourceProvider, Sendable {
     /// Returns an `ImageAsset` for the given name using the main bundle.
     ///
     /// - Parameter name: The name of the image asset.
-    /// - Throws: An error if the asset cannot be resolved.
     /// - Returns: A type-safe wrapper for the image asset.
-    public var imageAsset: @Sendable (_ name: String) throws -> ImageAsset
+    public var imageAsset: @Sendable (_ name: String) -> ImageAsset
 
     /// Returns a `ColorAsset` for the given name using the main bundle.
     ///
     /// - Parameter name: The name of the colour asset.
-    /// - Throws: An error if the asset cannot be resolved.
     /// - Returns: A type-safe wrapper for the colour asset.
-    public var colorAsset: @Sendable (_ name: String) throws -> ColorAsset
+    public var colorAsset: @Sendable (_ name: String) -> ColorAsset
 
     /// Creates a new `MainBundleClient` with the specified resource access closures.
     ///
@@ -75,8 +73,8 @@ public struct MainBundleClient: BundleResourceProvider, Sendable {
         extractName: @Sendable @escaping () throws -> String,
         extractShortVersionString: @Sendable @escaping () throws -> SemanticVersion,
         extractBuildNumber: @Sendable @escaping () throws -> Double,
-        imageAsset: @Sendable @escaping (_: String) throws -> ImageAsset,
-        colorAsset: @Sendable @escaping (_: String) throws -> ColorAsset
+        imageAsset: @Sendable @escaping (_: String) -> ImageAsset,
+        colorAsset: @Sendable @escaping (_: String) -> ColorAsset
     ) {
         self.urlForResource = urlForResource
         self.extractIdentifier = extractIdentifier
@@ -102,9 +100,9 @@ public enum MainBundleClientKey: TestDependencyKey {
         }, extractBuildNumber: {
             throw XcodeBundleError.buildNumberMissing
         }, imageAsset: { name in
-            throw XcodeBundleError.resourceNotFound(name: name)
+            return ImageAsset(name: "", bundle: .main)
         }, colorAsset: { name in
-            throw XcodeBundleError.resourceNotFound(name: name)
+            return ColorAsset(name: "", bundle: .main)
         })
     }()
 }
