@@ -15,6 +15,7 @@ This package currently provides two injectable clients:
 
 - `mainBundleClient`: a wrapper around `Bundle` using a `BundleResourceProvider` abstraction  
 - `userDefaultsClient`: a testable interface for `UserDefaults`, built on `UserDefaultsStoreProtocol`
+- `fileSystemClient`: provides ergonomic access to file operations like reading, writing, moving, copying, and deleting files or directories.
 
 > **Note**  
 > Additional dependencies such as `date`, `uuid`, and `calendar` are available transitively via [swift-dependencies](https://github.com/pointfreeco/swift-dependencies).  
