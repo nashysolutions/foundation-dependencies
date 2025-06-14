@@ -1,6 +1,6 @@
 # Included Clients
 
-This package provides two injectable dependencies:
+This package provides multiple injectable dependencies:
 
 ## `mainBundleClient`
 
@@ -12,7 +12,15 @@ A testable interface to `UserDefaults`, using `UserDefaultsStoreProtocol` to sup
 
 ## `fileSystemClient`
 
-A protocol-oriented, testable interface to the file system designed to support modular and dependency-injected file operations. It abstracts common file and directory operations, such as reading, writing, and deleting files, while allowing the actual implementation (real or mocked) to be injected at runtime.
+A protocol-oriented, testable interface to the file system, designed to support modular and dependency-injected file operations.  
+It abstracts common file and directory operations such as reading, writing, copying, and deleting files, while allowing the actual implementation (real or mocked) to be injected at runtime.
+
+## `fileSystemResourceClient`
+
+A factory for creating typed file stores that conform to `FileSystemOperations`.  
+It supports saving and loading `Codable` values and binary data into specific folders and subfolders, without exposing raw file system APIs. This design separates store construction from file handling logic, improving modularity and testability.
+
+---
 
 ## Additional Built-ins
 

@@ -17,6 +17,7 @@ The package includes:
 
 - <doc:IncludedClients>
 - <doc:MainBundleClient>
+- <doc:FileSystemResourceClient>
 - <doc:UserDefaultsClient>
 - <doc:FileSystemClient>
 - <doc:TestingAndOverrides>
