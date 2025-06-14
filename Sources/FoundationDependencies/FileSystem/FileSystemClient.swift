@@ -20,7 +20,7 @@ public struct FileSystemClient: Sendable {
     public var write: @Sendable (_ data: Data, _ url: URL, _ options: NSData.WritingOptions) throws -> Void
     public var read: @Sendable (_ url: URL) throws -> Data
     public var urlForDirectory: @Sendable (_ directory: FileSystemDirectory) throws -> URL
-    public var makeStore: @Sendable (_ directory: FileSystemDirectory) throws -> any FileSystemOperations
+    public var makeStore: @Sendable (_ directory: FileSystemDirectory, _ subfolder: String?) throws -> any FileSystemOperations
 
     public init(
         fileExists: @Sendable @escaping (_ url: URL) -> Bool,
@@ -32,7 +32,7 @@ public struct FileSystemClient: Sendable {
         write: @Sendable @escaping (_ data: Data, _ url: URL, _ options: NSData.WritingOptions) throws -> Void,
         read: @Sendable @escaping (_ url: URL) throws -> Data,
         urlForDirectory: @Sendable @escaping (_ directory: FileSystemDirectory) throws -> URL,
-        makeStore: @Sendable @escaping (_ directory: FileSystemDirectory) throws -> any FileSystemOperations
+        makeStore: @Sendable @escaping (_ directory: FileSystemDirectory, _ subfolder: String?) throws -> any FileSystemOperations
     ) {
         self.fileExists = fileExists
         self.folderExists = folderExists
@@ -58,7 +58,7 @@ public enum FileSystemClientKey: TestDependencyKey {
         write: { _, _, _ in },
         read: { _ in Data() },
         urlForDirectory: { _ in URL(fileURLWithPath: "/dev/null") },
-        makeStore: { _ in MockFileSystemStore() }
+        makeStore: { _, _ in MockFileSystemStore() }
     )
 }
 

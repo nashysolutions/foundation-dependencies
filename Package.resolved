@@ -23,8 +23,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/nashysolutions/files.git",
       "state" : {
-        "revision" : "1c040ba474a9726f2875380c155173e488a829cd",
-        "version" : "2.0.0"
+        "revision" : "9c76306050115394e69c7b05ff289d2d11135bea",
+        "version" : "2.1.0"
       }
     },
     {
