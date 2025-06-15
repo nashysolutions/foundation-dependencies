@@ -1,10 +1,12 @@
 # ``FoundationDependencies``
 
-Provides clearly defined, testable abstractions for Foundation types — such as `UserDefaults` and `Bundle` — via lightweight clients compatible with Swift Concurrency and [swift-dependencies](https://github.com/pointfreeco/swift-dependencies).
+Provides clearly defined, testable abstractions for Foundation types — such as `UserDefaults` and `Bundle` — via lightweight clients compatible with Swift Concurrency.
 
 ## Overview
 
-`FoundationDependencies` is designed to make system dependencies — such as `UserDefaults` and `Bundle` — more testable, composable, and safer to use in Swift Concurrency contexts. It exposes clients as `@Dependency`-injected values, enabling predictable behaviour in both production and testing environments.
+`FoundationDependencies` provides lightweight, testable wrappers around common system types such as `UserDefaults` and `Bundle`. It is built for seamless integration with [`swift-dependencies`](https://github.com/pointfreeco/swift-dependencies), and is designed to improve composability, testability, and safety — especially in Swift Concurrency contexts.
+
+Each system client is exposed as a `@Dependency`-injected value, enabling clear, predictable behaviour across both production and test environments.
 
 The package includes:
 
@@ -16,10 +18,9 @@ The package includes:
 ## Topics
 
 - <doc:IncludedClients>
-- <doc:MainBundleClient>
-- <doc:FileSystemResourceClient>
-- <doc:UserDefaultsClient>
-- <doc:FileSystemClient>
 - <doc:TestingAndOverrides>
 - <doc:ScopingDependencies>
-- <doc:BestPractices>
+- <doc:MainBundleClient>
+- <doc:FileSystemClient>
+- <doc:FileSystemResourceClient>
+- <doc:UserDefaultsClient>
