@@ -33,7 +33,8 @@ Comprehensive documentation is available via Swift Package Index:
 | `userDefaultsClient`      | A testable interface for `UserDefaults`, built using `UserDefaultsStoreProtocol`. Ideal for dependency injection and isolating persistent state in tests. |
 | `fileSystemClient`        | A robust file system interface supporting operations such as reading, writing, copying, moving, and deleting files or directories. Suitable for sandboxed storage and fully mockable for tests. |
 | `fileSystemResourceClient`| A factory for creating typed file stores that conform to `FileSystemOperations`. Supports saving and loading `Codable` values and binary data into specific folders and subfolders, without exposing raw file system APIs. |
-  
+| `loggerClient` | An interface to os.Logger, auto-populated with the MainBundle bundle identifier (even if you're logging outside the main bundle). |
+
 > **Note**  
 > Many additional dependencies like `date`, `uuid`, and `calendar` are provided transitively via `swift-dependencies`.  
 > See the [complete list of built-ins](https://github.com/pointfreeco/swift-dependencies/tree/main/Sources/Dependencies/DependencyValues).
