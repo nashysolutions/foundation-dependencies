@@ -7,68 +7,103 @@
 
 import Foundation
 
-/// A testable implementation of `UserDefaultsStoreProtocol` backed by an in-memory dictionary.
-///
-/// This class is intended for use in unit tests or previews where persistence to disk is not required.
-///
-/// > Note: This type is marked as `@unchecked Sendable`. If used across concurrency domains, access must be externally synchronised.
 public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked Sendable {
     
     private var storage: [String: Any] = [:]
     
-    public init() {
-        
+    public init() {}
+
+    // MARK: - Reading Values
+
+    public var bool: @MainActor @Sendable (String) -> Bool {
+        { [weak self] key in
+            self?.storage[key] as? Bool ?? false
+        }
+    }
+    
+    public var int: @MainActor @Sendable (String) -> Int {
+        { [weak self] key in
+            self?.storage[key] as? Int ?? 0
+        }
     }
 
-    public func bool(forKey key: String) -> Bool {
-        storage[key] as? Bool ?? false
+    public var double: @MainActor @Sendable (String) -> Double {
+        { [weak self] key in
+            self?.storage[key] as? Double ?? 0
+        }
     }
     
-    public func int(forKey key: String) -> Int {
-        storage[key] as? Int ?? 0
+    public var string: @MainActor @Sendable (String) -> String? {
+        { [weak self] key in
+            self?.storage[key] as? String
+        }
+    }
+    
+    public var stringArray: @MainActor @Sendable (String) -> [String]? {
+        { [weak self] key in
+            self?.storage[key] as? [String]
+        }
+    }
+    
+    public var object: @MainActor @Sendable (String) -> Any? {
+        { [weak self] key in
+            self?.storage[key]
+        }
+    }
+    
+    public var date: @MainActor @Sendable (String) -> Date? {
+        { [weak self] key in
+            self?.storage[key] as? Date
+        }
+    }
+    
+    public var removeObject: @MainActor @Sendable (String) -> Void {
+        { [weak self] key in
+            self?.storage.removeValue(forKey: key)
+        }
     }
 
-    public func double(forKey key: String) -> Double {
-        storage[key] as? Double ?? 0
+    // MARK: - Writing Values
+
+    public var setBool: @MainActor @Sendable (Bool, String) -> Void {
+        { [weak self] value, key in
+            self?.storage[key] = value
+        }
     }
     
-    public func string(forKey key: String) -> String? {
-        storage[key] as? String
+    public var setInt: @MainActor @Sendable (Int, String) -> Void {
+        { [weak self] value, key in
+            self?.storage[key] = value
+        }
     }
     
-    public func stringArray(forKey key: String) -> [String]? {
-        storage[key] as? [String]
-    }
-    
-    public func object(forKey key: String) -> Any? {
-        storage[key]
-    }
-    
-    public func date(forKey key: String) -> Date? {
-        storage[key] as? Date
-    }
-    
-    public func removeObject(forKey key: String) {
-        storage.removeValue(forKey: key)
-    }
-    
-    public func set(_ value: Bool, forKey key: String) {
-        storage[key] = value
+    public var setDouble: @MainActor @Sendable (Double, String) -> Void {
+        { [weak self] value, key in
+            self?.storage[key] = value
+        }
     }
 
-    public func set(_ value: String?, forKey key: String) {
-        storage[key] = value
+    public var setString: @MainActor @Sendable (String?, String) -> Void {
+        { [weak self] value, key in
+            self?.storage[key] = value
+        }
     }
 
-    public func set(_ value: [String]?, forKey key: String) {
-        storage[key] = value
+    public var setStringArray: @MainActor @Sendable ([String]?, String) -> Void {
+        { [weak self] value, key in
+            self?.storage[key] = value
+        }
     }
 
-    public func set(_ value: Any?, forKey key: String) {
-        storage[key] = value
+    public var setObject: @MainActor @Sendable (Any?, String) -> Void {
+        { [weak self] value, key in
+            self?.storage[key] = value
+        }
     }
 
-    public func set(_ value: Date?, forKey key: String) {
-        storage[key] = value
+    public var setDate: @MainActor @Sendable (Date?, String) -> Void {
+        { [weak self] value, key in
+            self?.storage[key] = value
+        }
     }
 }

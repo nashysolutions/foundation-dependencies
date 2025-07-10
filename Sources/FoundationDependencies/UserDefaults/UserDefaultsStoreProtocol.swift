@@ -7,102 +7,121 @@
 
 import Foundation
 
-/// A protocol that defines a type-safe, testable interface for accessing and modifying values stored in `UserDefaults`.
+/// A protocol that defines a type-safe and actor-isolated interface for interacting with a `UserDefaults`-like key-value store.
 ///
-/// Types conforming to this protocol provide an abstraction over `UserDefaults`, making it easier to inject mock
-/// implementations for unit testing or to isolate user preferences in different contexts.
-///
-/// This protocol is `Sendable`, and individual read/write operations are generally thread-safe when backed by `UserDefaults`.
-/// However, race conditions may occur when accessing the same keys from multiple threads concurrently—especially when
-/// working with compound values (e.g. dictionaries, arrays, or custom objects) or derived state (e.g. reading a value,
-/// modifying it in memory, then writing it back).
-///
-/// Please see Apple’s documentation on `UserDefaults` thread safety for further guidance.
+/// All operations are performed on the main actor to ensure thread safety when accessing or modifying underlying storage.
+/// This protocol is `Sendable` and can be safely used in concurrent contexts where main-actor isolation is maintained.
 public protocol UserDefaultsStoreProtocol: Sendable {
 
-    // MARK: - Reading Values
+    // MARK: - Boolean Values
 
-    /// Returns the boolean value associated with the specified key.
+    /// Retrieves a Boolean value for the specified key.
     ///
-    /// - Parameter key: The key associated with the boolean value.
-    /// - Returns: The boolean value, or `false` if the key does not exist.
-    func bool(forKey key: String) -> Bool
+    /// - Parameter key: The key associated with the desired value.
+    /// - Returns: The Boolean value if present, or `false` if not found.
+    var bool: @MainActor (String) -> Bool { get }
 
-    /// Returns the integer value associated with the specified key.
+    /// Stores a Boolean value for the specified key.
     ///
-    /// - Parameter key: The key associated with the integer value.
-    /// - Returns: The integer value, or `0` if the key does not exist.
-    func int(forKey key: String) -> Int
+    /// - Parameters:
+    ///   - value: The Boolean value to store.
+    ///   - key: The key to associate the value with.
+    var setBool: @MainActor (Bool, String) -> Void { get }
 
-    /// Returns the double value associated with the specified key.
-    ///
-    /// - Parameter key: The key associated with the double value.
-    /// - Returns: The double value, or `0.0` if the key does not exist.
-    func double(forKey key: String) -> Double
+    // MARK: - Integer Values
 
-    /// Returns the string value associated with the specified key.
+    /// Retrieves an integer value for the specified key.
     ///
-    /// - Parameter key: The key associated with the string value.
-    /// - Returns: The string value, or `nil` if the key does not exist or the value is not a string.
-    func string(forKey key: String) -> String?
+    /// - Parameter key: The key associated with the desired value.
+    /// - Returns: The integer value if present, or `0` if not found.
+    var int: @MainActor (String) -> Int { get }
 
-    /// Returns the string array associated with the specified key.
+    /// Stores an integer value for the specified key.
     ///
-    /// - Parameter key: The key associated with the array.
-    /// - Returns: The array of strings, or `nil` if the key does not exist or the value is not an array of strings.
-    func stringArray(forKey key: String) -> [String]?
+    /// - Parameters:
+    ///   - value: The integer value to store.
+    ///   - key: The key to associate the value with.
+    var setInt: @MainActor (Int, String) -> Void { get }
 
-    /// Returns the object associated with the specified key.
-    ///
-    /// - Parameter key: The key associated with the value.
-    /// - Returns: The stored object, or `nil` if the key does not exist.
-    func object(forKey key: String) -> Any?
+    // MARK: - Double Values
 
-    /// Returns the date value associated with the specified key.
+    /// Retrieves a double value for the specified key.
     ///
-    /// - Parameter key: The key associated with the date.
-    /// - Returns: The date value, or `nil` if the key does not exist or the value is not a date.
-    func date(forKey key: String) -> Date?
+    /// - Parameter key: The key associated with the desired value.
+    /// - Returns: The double value if present, or `0` if not found.
+    var double: @MainActor (String) -> Double { get }
+
+    /// Stores a double value for the specified key.
+    ///
+    /// - Parameters:
+    ///   - value: The double value to store.
+    ///   - key: The key to associate the value with.
+    var setDouble: @MainActor (Double, String) -> Void { get }
+
+    // MARK: - String Values
+
+    /// Retrieves a string value for the specified key.
+    ///
+    /// - Parameter key: The key associated with the desired value.
+    /// - Returns: The string value if present, or `nil` if not found.
+    var string: @MainActor (String) -> String? { get }
+
+    /// Stores a string value for the specified key.
+    ///
+    /// - Parameters:
+    ///   - value: The string value to store, or `nil` to remove it.
+    ///   - key: The key to associate the value with.
+    var setString: @MainActor (String?, String) -> Void { get }
+
+    // MARK: - String Array Values
+
+    /// Retrieves an array of strings for the specified key.
+    ///
+    /// - Parameter key: The key associated with the desired value.
+    /// - Returns: The string array if present, or `nil` if not found.
+    var stringArray: @MainActor (String) -> [String]? { get }
+
+    /// Stores an array of strings for the specified key.
+    ///
+    /// - Parameters:
+    ///   - value: The string array to store, or `nil` to remove it.
+    ///   - key: The key to associate the value with.
+    var setStringArray: @MainActor ([String]?, String) -> Void { get }
+
+    // MARK: - Object Values
+
+    /// Retrieves a raw object for the specified key.
+    ///
+    /// - Parameter key: The key associated with the desired value.
+    /// - Returns: The object if present, or `nil` if not found.
+    var object: @MainActor (String) -> Any? { get }
+
+    /// Stores a raw object for the specified key.
+    ///
+    /// - Parameters:
+    ///   - value: The object to store, or `nil` to remove it.
+    ///   - key: The key to associate the value with.
+    var setObject: @MainActor (Any?, String) -> Void { get }
+
+    // MARK: - Date Values
+
+    /// Retrieves a `Date` value for the specified key.
+    ///
+    /// - Parameter key: The key associated with the desired value.
+    /// - Returns: The `Date` value if present, or `nil` if not found.
+    var date: @MainActor (String) -> Date? { get }
+
+    /// Stores a `Date` value for the specified key.
+    ///
+    /// - Parameters:
+    ///   - value: The `Date` value to store, or `nil` to remove it.
+    ///   - key: The key to associate the value with.
+    var setDate: @MainActor (Date?, String) -> Void { get }
+
+    // MARK: - Deletion
 
     /// Removes the value associated with the specified key.
     ///
-    /// - Parameter key: The key of the value to remove.
-    func removeObject(forKey key: String)
-
-    // MARK: - Writing Values
-
-    /// Sets a boolean value for the specified key.
-    ///
-    /// - Parameters:
-    ///   - value: The boolean value to store.
-    ///   - key: The key under which to store the value.
-    func set(_ value: Bool, forKey key: String)
-
-    /// Sets a string value for the specified key.
-    ///
-    /// - Parameters:
-    ///   - value: The optional string value to store.
-    ///   - key: The key under which to store the value.
-    func set(_ value: String?, forKey key: String)
-
-    /// Sets an array of strings for the specified key.
-    ///
-    /// - Parameters:
-    ///   - value: The optional array of strings to store.
-    ///   - key: The key under which to store the value.
-    func set(_ value: [String]?, forKey key: String)
-
-    /// Sets an arbitrary object for the specified key.
-    ///
-    /// - Parameters:
-    ///   - value: The optional object to store.
-    ///   - key: The key under which to store the value.
-    func set(_ value: Any?, forKey key: String)
-
-    /// Sets a date value for the specified key.
-    ///
-    /// - Parameters:
-    ///   - value: The optional date value to store.
-    ///   - key: The key under which to store the value.
-    func set(_ value: Date?, forKey key: String)
+    /// - Parameter key: The key for which the value should be removed.
+    var removeObject: @MainActor (String) -> Void { get }
 }

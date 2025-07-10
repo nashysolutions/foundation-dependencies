@@ -7,73 +7,144 @@
 
 import Foundation
 
-/// A live implementation of `UserDefaultsStoreProtocol` backed by `UserDefaults`.
+/// A live implementation of `UserDefaultsStoreProtocol` backed by Foundation's `UserDefaults`.
 ///
-/// This class provides access to values stored in a named `UserDefaults` suite, enabling
-/// separation of user preferences, app groups, or isolated testing environments.
+/// This store reads from and writes to a real `UserDefaults` suite identified by a suite name.
+/// All operations are isolated to the main actor, which guarantees thread-safety despite
+/// the fact that `UserDefaults` itself is not `Sendable`.
 ///
-/// All reads and writes are forwarded to the corresponding `UserDefaults` instance.
+/// Although `UserDefaults` is a reference type and not marked `Sendable`, this implementation
+/// is safe to use in `Sendable` contexts because **all closure properties are explicitly
+/// isolated to the `@MainActor`**, ensuring serial access and avoiding data races.
 ///
-/// This type is `Sendable` and generally safe for concurrent use. However, when multiple threads
-/// access the same keys at the same time—especially when reading, modifying, and writing complex
-/// data like dictionaries, arrays, or custom objects—race conditions may occur. This includes
-/// operations where values are read, mutated in memory, and written back (i.e. derived state).
-/// Please see Apple’s documentation on `UserDefaults` thread safety for further guidance.
-public final class UserDefaultsLiveStore: UserDefaultsStoreProtocol, Sendable {
-    
-    /// The name of the `UserDefaults` suite to use.
+/// Use this type in production environments where persistent app settings or preferences
+/// need to be stored and retrieved.
+///
+/// - Note: The suite name can be used to access an app group or shared user defaults container.
+public struct UserDefaultsLiveStore: UserDefaultsStoreProtocol {
+
+    /// The suite name used to initialise the underlying `UserDefaults` instance.
     private let suiteName: String
-    
-    /// Creates a new live store backed by the given `UserDefaults` suite.
+
+    /// Creates a new `UserDefaultsLiveStore` with the specified suite name.
     ///
-    /// - Parameter suiteName: The suite name used to initialise the `UserDefaults` instance.
-    ///                        This must match a suite registered with your app or app group.
+    /// - Parameter suiteName: The suite name to use when instantiating `UserDefaults`.
+    ///                        Pass `nil` to use `.standard`.
     public init(suiteName: String) {
         self.suiteName = suiteName
     }
 
-    /// The underlying `UserDefaults` instance, if one exists for the given suite name.
+    /// A lazily-evaluated computed property for accessing the backing `UserDefaults` instance.
     private var userDefaults: UserDefaults? {
         UserDefaults(suiteName: suiteName)
     }
-    
-    public func bool(forKey key: String) -> Bool {
-        userDefaults?.bool(forKey: key) ?? false
-    }
-    
-    public func int(forKey key: String) -> Int {
-        userDefaults?.integer(forKey: key) ?? 0
+
+    // MARK: - Reading Values
+
+    /// Retrieves a Boolean value for the specified key.
+    public var bool: @MainActor (String) -> Bool {
+        { key in
+            userDefaults?.bool(forKey: key) ?? false
+        }
     }
 
-    public func double(forKey key: String) -> Double {
-        userDefaults?.double(forKey: key) ?? 0
+    /// Retrieves an integer value for the specified key.
+    public var int: @MainActor (String) -> Int {
+        { key in
+            userDefaults?.integer(forKey: key) ?? 0
+        }
     }
-    
-    public func string(forKey key: String) -> String? {
-        userDefaults?.string(forKey: key)
+
+    /// Retrieves a double value for the specified key.
+    public var double: @MainActor (String) -> Double {
+        { key in
+            userDefaults?.double(forKey: key) ?? 0
+        }
     }
-    
-    public func stringArray(forKey key: String) -> [String]? {
-        userDefaults?.stringArray(forKey: key)
+
+    /// Retrieves a string value for the specified key.
+    public var string: @MainActor (String) -> String? {
+        { key in
+            userDefaults?.string(forKey: key)
+        }
     }
-    
-    public func object(forKey key: String) -> Any? {
-        userDefaults?.object(forKey: key)
+
+    /// Retrieves an array of strings for the specified key.
+    public var stringArray: @MainActor (String) -> [String]? {
+        { key in
+            userDefaults?.stringArray(forKey: key)
+        }
     }
-    
-    public func date(forKey key: String) -> Date? {
-        object(forKey: key) as? Date
+
+    /// Retrieves a raw object for the specified key.
+    public var object: @MainActor (String) -> Any? {
+        { key in
+            userDefaults?.object(forKey: key)
+        }
     }
-    
-    public func removeObject(forKey key: String) {
-        userDefaults?.removeObject(forKey: key)
+
+    /// Retrieves a `Date` value for the specified key.
+    public var date: @MainActor (String) -> Date? {
+        { key in
+            userDefaults?.object(forKey: key) as? Date
+        }
     }
-    
-    public func value<T>(forKey key: String) -> T? {
-        userDefaults?.value(forKey: key) as? T
+
+    /// Removes the value associated with the specified key.
+    public var removeObject: @MainActor (String) -> Void {
+        { key in
+            userDefaults?.removeObject(forKey: key)
+        }
     }
-    
-    public func set<T>(_ value: T, forKey key: String) {
-        userDefaults?.set(value, forKey: key)
+
+    // MARK: - Writing Values
+
+    /// Stores a Boolean value for the specified key.
+    public var setBool: @MainActor (Bool, String) -> Void {
+        { value, key in
+            userDefaults?.set(value, forKey: key)
+        }
+    }
+
+    /// Stores an integer value for the specified key.
+    public var setInt: @MainActor (Int, String) -> Void {
+        { value, key in
+            userDefaults?.set(value, forKey: key)
+        }
+    }
+
+    /// Stores a double value for the specified key.
+    public var setDouble: @MainActor (Double, String) -> Void {
+        { value, key in
+            userDefaults?.set(value, forKey: key)
+        }
+    }
+
+    /// Stores a string value for the specified key.
+    public var setString: @MainActor (String?, String) -> Void {
+        { value, key in
+            userDefaults?.set(value, forKey: key)
+        }
+    }
+
+    /// Stores an array of strings for the specified key.
+    public var setStringArray: @MainActor ([String]?, String) -> Void {
+        { value, key in
+            userDefaults?.set(value, forKey: key)
+        }
+    }
+
+    /// Stores a raw object for the specified key.
+    public var setObject: @MainActor (Any?, String) -> Void {
+        { value, key in
+            userDefaults?.set(value, forKey: key)
+        }
+    }
+
+    /// Stores a `Date` value for the specified key.
+    public var setDate: @MainActor (Date?, String) -> Void {
+        { value, key in
+            userDefaults?.set(value, forKey: key)
+        }
     }
 }

@@ -8,124 +8,134 @@
 import Foundation
 import Dependencies
 
-/// A value-type interface for interacting with user defaults in a testable and dependency-injected manner.
+/// A concrete implementation of `UserDefaultsStoreProtocol` backed by user-supplied closures.
 ///
-/// `UserDefaultsClient` wraps standard operations on `UserDefaults` using simple closures.
-public struct UserDefaultsClient: Sendable {
-
+/// `UserDefaultsClient` allows you to inject a custom implementation of user defaults
+/// functionality—useful for testing, mocking, or adapting to different storage systems.
+///
+/// All operations are isolated to the main actor and explicitly marked `@Sendable`
+/// for safe usage in concurrent contexts.
+///
+/// This type is `Sendable` and can be used as a dependency in Swift Concurrency environments.
+public struct UserDefaultsClient: UserDefaultsStoreProtocol {
+    
     // MARK: - Stored Closures
 
     /// Retrieves a Boolean value for a given key.
-    public var bool: @Sendable (String) -> Bool
+    public var bool: @MainActor @Sendable (String) -> Bool
 
-    /// Stores a Boolean value for a given key.
-    public var setBool: @Sendable (Bool, String) -> Void
+    /// Retrieves an integer value for a given key.
+    public var int: @MainActor @Sendable (String) -> Int
+
+    /// Retrieves a double value for a given key.
+    public var double: @MainActor @Sendable (String) -> Double
 
     /// Retrieves a string value for a given key.
-    public var string: @Sendable (String) -> String?
-
-    /// Stores a string value for a given key.
-    public var setString: @Sendable (String?, String) -> Void
+    public var string: @MainActor @Sendable (String) -> String?
 
     /// Retrieves an array of strings for a given key.
-    public var stringArray: @Sendable (String) -> [String]?
-
-    /// Stores an array of strings for a given key.
-    public var setStringArray: @Sendable ([String]?, String) -> Void
+    public var stringArray: @MainActor @Sendable (String) -> [String]?
 
     /// Retrieves a raw object for a given key.
-    public var object: @Sendable (String) -> Any?
-
-    /// Stores a raw object for a given key.
-    public var setObject: @Sendable (Any?, String) -> Void
+    public var object: @MainActor @Sendable (String) -> Any?
 
     /// Retrieves a `Date` value for a given key.
-    public var date: @Sendable (String) -> Date?
-
-    /// Stores a `Date` value for a given key.
-    public var setDate: @Sendable (Date?, String) -> Void
+    public var date: @MainActor @Sendable (String) -> Date?
 
     /// Removes the value associated with the given key.
-    public var removeObject: @Sendable (String) -> Void
+    public var removeObject: @MainActor @Sendable (String) -> Void
+
+    /// Stores a Boolean value for a given key.
+    public var setBool: @MainActor @Sendable (Bool, String) -> Void
+    
+    /// Stores an integer value for a given key.
+    public var setInt: @MainActor @Sendable (Int, String) -> Void
+    
+    /// Stores a double value for a given key.
+    public var setDouble: @MainActor @Sendable (Double, String) -> Void
+    
+    /// Stores a string value for a given key.
+    public var setString: @MainActor @Sendable (String?, String) -> Void
+
+    /// Stores an array of strings for a given key.
+    public var setStringArray: @MainActor @Sendable ([String]?, String) -> Void
+
+    /// Stores a raw object for a given key.
+    public var setObject: @MainActor @Sendable (Any?, String) -> Void
+
+    /// Stores a `Date` value for a given key.
+    public var setDate: @MainActor @Sendable (Date?, String) -> Void
 
     // MARK: - Initialiser
 
     /// Creates a new `UserDefaultsClient` using the provided closures for each operation.
     ///
     /// - Parameters:
-    ///   - bool: A closure to retrieve a `Bool` value for a key.
-    ///   - setBool: A closure to store a `Bool` value for a key.
-    ///   - string: A closure to retrieve a `String?` value for a key.
-    ///   - setString: A closure to store a `String?` value for a key.
-    ///   - stringArray: A closure to retrieve a `[String]?` value for a key.
-    ///   - setStringArray: A closure to store a `[String]?` value for a key.
-    ///   - object: A closure to retrieve an `Any?` value for a key.
-    ///   - setObject: A closure to store an `Any?` value for a key.
-    ///   - date: A closure to retrieve a `Date?` value for a key.
-    ///   - setDate: A closure to store a `Date?` value for a key.
-    ///   - removeObject: A closure to remove a value for a key.
+    ///   - bool: Closure to retrieve a `Bool` for a given key.
+    ///   - int: Closure to retrieve an `Int` for a given key.
+    ///   - double: Closure to retrieve a `Double` for a given key.
+    ///   - string: Closure to retrieve a `String?` for a given key.
+    ///   - stringArray: Closure to retrieve a `[String]?` for a given key.
+    ///   - object: Closure to retrieve an `Any?` for a given key.
+    ///   - date: Closure to retrieve a `Date?` for a given key.
+    ///   - removeObject: Closure to remove a value for a given key.
+    ///   - setBool: Closure to store a `Bool` for a given key.
+    ///   - setInt: Closure to store an `Int` for a given key.
+    ///   - setDouble: Closure to store a `Double` for a given key.
+    ///   - setString: Closure to store a `String?` for a given key.
+    ///   - setStringArray: Closure to store a `[String]?` for a given key.
+    ///   - setObject: Closure to store an `Any?` for a given key.
+    ///   - setDate: Closure to store a `Date?` for a given key.
     public init(
-        bool: @Sendable @escaping (String) -> Bool,
-        setBool: @Sendable @escaping (Bool, String) -> Void,
-        string: @Sendable @escaping (String) -> String?,
-        setString: @Sendable @escaping (String?, String) -> Void,
-        stringArray: @Sendable @escaping (String) -> [String]?,
-        setStringArray: @Sendable @escaping ([String]?, String) -> Void,
-        object: @Sendable @escaping (String) -> Any?,
-        setObject: @Sendable @escaping (Any?, String) -> Void,
-        date: @Sendable @escaping (String) -> Date?,
-        setDate: @Sendable @escaping (Date?, String) -> Void,
-        removeObject: @Sendable @escaping (String) -> Void
+        bool: @MainActor @Sendable @escaping (String) -> Bool,
+        int: @MainActor @Sendable @escaping (String) -> Int,
+        double: @MainActor @Sendable @escaping (String) -> Double,
+        string: @MainActor @Sendable @escaping (String) -> String?,
+        stringArray: @MainActor @Sendable @escaping (String) -> [String]?,
+        object: @MainActor @Sendable @escaping (String) -> Any?,
+        date: @MainActor @Sendable @escaping (String) -> Date?,
+        removeObject: @MainActor @Sendable @escaping (String) -> Void,
+        setBool: @MainActor @Sendable @escaping (Bool, String) -> Void,
+        setInt: @MainActor @Sendable @escaping (Int, String) -> Void,
+        setDouble: @MainActor @Sendable @escaping (Double, String) -> Void,
+        setString: @MainActor @Sendable @escaping (String?, String) -> Void,
+        setStringArray: @MainActor @Sendable @escaping ([String]?, String) -> Void,
+        setObject: @MainActor @Sendable @escaping (Any?, String) -> Void,
+        setDate: @MainActor @Sendable @escaping (Date?, String) -> Void
     ) {
         self.bool = bool
-        self.setBool = setBool
+        self.int = int
+        self.double = double
         self.string = string
-        self.setString = setString
         self.stringArray = stringArray
-        self.setStringArray = setStringArray
         self.object = object
-        self.setObject = setObject
         self.date = date
-        self.setDate = setDate
         self.removeObject = removeObject
+        self.setBool = setBool
+        self.setInt = setInt
+        self.setDouble = setDouble
+        self.setString = setString
+        self.setStringArray = setStringArray
+        self.setObject = setObject
+        self.setDate = setDate
     }
 }
 
-public extension UserDefaultsClient {
-
-    /// Creates a `UserDefaultsClient` from an instance conforming to `UserDefaultsStoreProtocol`.
-    ///
-    /// This allows for dependency injection using a custom or mock store implementation,
-    /// which is useful in testing environments or alternate backends.
-    ///
-    /// - Parameter store: A type conforming to `UserDefaultsStoreProtocol`.
-    /// - Returns: A `UserDefaultsClient` that delegates calls to the provided store.
-    static func from(store: UserDefaultsStoreProtocol) -> UserDefaultsClient {
-        .init(
-            bool: { store.bool(forKey: $0) },
-            setBool: { store.set($0, forKey: $1) },
-            string: { store.string(forKey: $0) },
-            setString: { store.set($0, forKey: $1) },
-            stringArray: { store.stringArray(forKey: $0) },
-            setStringArray: { store.set($0, forKey: $1) },
-            object: { store.object(forKey: $0) },
-            setObject: { store.set($0, forKey: $1) },
-            date: { store.date(forKey: $0) },
-            setDate: { store.set($0, forKey: $1) },
-            removeObject: { store.removeObject(forKey: $0) }
-        )
-    }
-}
-
+/// A test dependency key for injecting a stubbed user defaults client in unit tests.
 public enum UserDefaultsKey: TestDependencyKey {
-    public static let testValue: UserDefaultsClient = .from(store: UserDefaultsTestStore())
+    /// A test implementation of `UserDefaultsStoreProtocol` using in-memory storage.
+    public static let testValue: any UserDefaultsStoreProtocol = UserDefaultsTestStore()
 }
 
+/// Extension for registering and accessing the `UserDefaultsStoreProtocol` client
+/// in the dependency injection system.
 public extension DependencyValues {
-    
-    var userDefaultsClient: UserDefaultsClient {
+
+    /// The user defaults client available in the current dependency context.
+    ///
+    /// Use this to access or override the user defaults client for testing.
+    var userDefaultsClient: any UserDefaultsStoreProtocol {
         get { self[UserDefaultsKey.self] }
         set { self[UserDefaultsKey.self] = newValue }
     }
 }
-
