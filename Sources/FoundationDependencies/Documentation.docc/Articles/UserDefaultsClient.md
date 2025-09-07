@@ -18,9 +18,7 @@ The UserDefaultsClient provides typed access to user defaults using dependency i
 ```swift
 extension UserDefaultsKey: @retroactive DependencyKey {
     
-    public static var liveValue: UserDefaultsClient {
-        .from(store: UserDefaultsLiveStore(suiteName: "com.robertnash.myapp"))
-    }
+    public static let liveValue: any UserDefaultsStoreProtocol = UserDefaultsLiveStore(suiteName: "com.robertnash.myapp")
 }
 ```
 
@@ -39,9 +37,6 @@ You can also use a testable protocol-backed store. This is the value that is set
 
 ```swift
 public enum UserDefaultsKey: TestDependencyKey {
-
-    public static let testValue: UserDefaultsClient {
-        .from(store: UserDefaultsTestStore())
-    }
+    public static let testValue: any UserDefaultsStoreProtocol = UserDefaultsTestStore()
 }
 ```
