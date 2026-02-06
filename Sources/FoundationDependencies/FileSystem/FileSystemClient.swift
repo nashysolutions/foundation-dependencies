@@ -73,6 +73,15 @@ public struct FileSystemClient: Sendable {
     /// - Throws: An error if the file cannot be read.
     public var read: @Sendable (_ url: URL) throws -> Data
 
+    /// Lists the contents of the store's folder and materializes requested resource values.
+    ///
+    /// - Parameters:
+    ///   - keys: Resource keys to prefetch and materialize for each URL. Defaults to an empty list.
+    ///   - options: Enumeration options that affect which items are returned and how. Defaults to an empty set.
+    /// - Returns: An array of `DirectoryEntry` values for each item in the folder.
+    /// - Throws: An error if the directory does not exist, is not a directory, or cannot otherwise be accessed or enumerated (for example, due to permissions).
+    public var contents: @Sendable (_ url: URL, _ keys: [URLResourceKey], _ options: FileManager.DirectoryEnumerationOptions) throws -> [DirectoryEntry]
+
     /// Resolves the file system URL for a logical directory (e.g. `.documents`, `.caches`).
     ///
     /// - Parameter directory: The logical directory to resolve.
@@ -91,6 +100,7 @@ public struct FileSystemClient: Sendable {
     ///   - copyResource: Closure to copy a resource from one location to another.
     ///   - write: Closure to write data to disk.
     ///   - read: Closure to read data from disk.
+    ///   - contents: Closure to list directory contents.
     ///   - urlForDirectory: Closure to resolve logical directory URLs.
     public init(
         fileExists: @Sendable @escaping (_ url: URL) -> Bool,
@@ -101,6 +111,7 @@ public struct FileSystemClient: Sendable {
         copyResource: @Sendable @escaping (_ from: URL, _ to: URL) throws -> Void,
         write: @Sendable @escaping (_ data: Data, _ url: URL, _ options: NSData.WritingOptions) throws -> Void,
         read: @Sendable @escaping (_ url: URL) throws -> Data,
+        contents: @Sendable @escaping (_ url: URL, _ keys: [URLResourceKey], _ options: FileManager.DirectoryEnumerationOptions) throws -> [DirectoryEntry],
         urlForDirectory: @Sendable @escaping (_ directory: FileSystemDirectory) throws -> URL
     ) {
         self.fileExists = fileExists
@@ -111,6 +122,7 @@ public struct FileSystemClient: Sendable {
         self.copyResource = copyResource
         self.write = write
         self.read = read
+        self.contents = contents
         self.urlForDirectory = urlForDirectory
     }
 }
@@ -125,6 +137,7 @@ public enum FileSystemClientKey: TestDependencyKey {
         copyResource: { _, _ in },
         write: { _, _, _ in },
         read: { _ in Data() },
+        contents: { _, _, _ in [] },
         urlForDirectory: { _ in URL(fileURLWithPath: "/dev/null") }
     )
 }
@@ -136,3 +149,4 @@ public extension DependencyValues {
         set { self[FileSystemClientKey.self] = newValue }
     }
 }
+
