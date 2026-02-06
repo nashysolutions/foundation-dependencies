@@ -90,6 +90,9 @@ private struct MockFileSystemStore: FileSystemOperations {
         func url(for directory: FileSystemDirectory) throws -> URL {
             URL(fileURLWithPath: "/dev/null")
         }
+        func contentsOfDirectory(at url: URL, includingPropertiesForKeys keys: [URLResourceKey], options: FileManager.DirectoryEnumerationOptions) throws -> [URL] {
+            return []
+        }
     }
 
     let folder = DummyFolder()
