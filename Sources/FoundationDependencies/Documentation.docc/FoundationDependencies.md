@@ -11,7 +11,7 @@ Each system client is exposed as a `@Dependency`-injected value, enabling clear,
 The package includes:
 
 - Simple, protocol-backed wrappers for key Foundation types.
-- Fully testable `.mock` and `.testValue` variants for each dependency.
+- A `testValue` for every dependency, so tests start from a working double.
 - Native integration with [swift-dependencies](https://github.com/pointfreeco/swift-dependencies).
 - Support for SwiftPM modules and SwiftUI applications.
 
