@@ -102,9 +102,14 @@ Prefer `prepareDependencies`. A stored property has nowhere sensible to handle a
 
 The default value for this dependency is already `UserDefaultsTestStore`, an in-memory store that touches no real suite, so nothing has to be registered before a test can run.
 
-Do not lean on that default to isolate one test from the next. `UserDefaultsKey.testValue` is a stored property, so every test that does not override the dependency shares a single store for the lifetime of the process, and a value written by one test is still there for the next one to read.
+Each test gets its own. `UserDefaultsKey.testValue` is computed rather than stored, and `swift-dependencies` caches what it resolves against the running test, so two tests leaning on the default hold two different stores while repeated resolutions inside one test hold the same one. A value written by one test is not there for the next one to read.
 
-Give each test its own store, seed it, and inject it:
+Two places that isolation does not reach:
+
+- The argument rows of a parameterised `@Test` share one test identity, so they share one store, and the order they run in is not promised.
+- Code inside a detached task is outside the running test as far as the cache is concerned, so it resolves a store of its own rather than the one the test body is holding.
+
+Inject your own store whenever a test needs seeded values, and whenever either of those applies:
 
 ```swift
 let store = UserDefaultsTestStore()
@@ -117,7 +122,7 @@ withDependencies {
 }
 ```
 
-Nothing survives the process, so the only state a test can inherit is state another test in the same run left behind.
+Nothing survives the process.
 
 ### Fidelity to Live `UserDefaults`
 

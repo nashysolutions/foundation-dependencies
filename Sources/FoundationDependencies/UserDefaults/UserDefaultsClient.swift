@@ -123,8 +123,29 @@ public struct UserDefaultsClient: UserDefaultsStoreProtocol {
 
 /// A test dependency key for injecting a stubbed user defaults client in unit tests.
 public enum UserDefaultsKey: TestDependencyKey {
+
     /// A test implementation of `UserDefaultsStoreProtocol` using in-memory storage.
-    public static let testValue: any UserDefaultsStoreProtocol = UserDefaultsTestStore()
+    ///
+    /// Computed rather than stored, and it has to stay that way. `UserDefaultsTestStore`
+    /// is a class holding a dictionary, so a stored property would be one store for the
+    /// whole process: every test that installs no store of its own would resolve that
+    /// same instance, and a value written by one test would still be sitting there for
+    /// the next one to read. Reading this property builds a store instead.
+    ///
+    /// That is not the same as a new store on every resolution, which would be just as
+    /// wrong in the other direction. `swift-dependencies` caches what it resolves, keyed
+    /// on the running test, so a test that resolves the dependency twice is handed the
+    /// same store both times and a write made through one resolution is visible through
+    /// the other. Freshness is per test, sameness is within a test, and a caller that
+    /// stores a value and reads it back needs the second of those as much as isolation
+    /// needs the first.
+    ///
+    /// `UserDefaultsDefaultStoreIsolationTests` holds both. It fails in the first
+    /// direction if this goes back to being a stored property, and in the second if a
+    /// later change hands out a store per resolution rather than per test.
+    public static var testValue: any UserDefaultsStoreProtocol {
+        UserDefaultsTestStore()
+    }
 }
 
 /// Extension for registering and accessing the `UserDefaultsStoreProtocol` client
