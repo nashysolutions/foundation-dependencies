@@ -13,18 +13,18 @@ import Versioning
 /// This protocol is intended for types that provide resources from a specific Xcode bundle.
 /// It also provides convenience methods for retrieving common bundle metadata.
 public protocol XcodeBundle: AnyObject, BundleResourceProvider {
-    
+
     /// The bundle associated with the conforming type.
     static var bundle: Bundle { get }
 }
 
 public extension XcodeBundle {
-    
+
     /// The bundle associated with the current type, resolved using `Bundle(for:)`.
     static var bundle: Bundle {
         Bundle(for: Self.self)
     }
-    
+
     /// Returns a closure that retrieves the URL for a specified resource in the bundle.
     ///
     /// - Returns: A closure that takes a file name and file extension and returns the corresponding resource URL.
@@ -37,7 +37,7 @@ public extension XcodeBundle {
             return url
         }
     }
-    
+
     /// Returns a closure that extracts the bundle identifier.
     ///
     /// - Returns: A closure that returns the bundle identifier as a `String`.
@@ -50,7 +50,7 @@ public extension XcodeBundle {
             return identifier
         }
     }
-    
+
     /// Returns a closure that extracts the bundle name from the `CFBundleName` key.
     ///
     /// - Returns: A closure that returns the bundle name.
@@ -63,7 +63,7 @@ public extension XcodeBundle {
             return name
         }
     }
-    
+
     /// Returns a closure that extracts the short version string and parses it as a `SemanticVersion`.
     ///
     /// - Returns: A closure that returns the parsed `SemanticVersion`.
@@ -97,7 +97,7 @@ public extension XcodeBundle {
             return buildNumber
         }
     }
-    
+
     /// Returns an image asset with the specified name from the current bundle.
     ///
     /// - Parameter name: The name of the image asset.
