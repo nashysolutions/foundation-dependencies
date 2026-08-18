@@ -25,14 +25,14 @@ import Foundation
 /// Use this type in production environments where persistent app settings or preferences need
 /// to be stored and retrieved.
 ///
-/// - Note: The `Sendable` conformance is unchecked because `UserDefaults` is a class that
-///   Foundation does not mark `Sendable`. Two things make it safe here. Apple documents
-///   `UserDefaults` itself as thread-safe, and every endpoint on this store is isolated to the
-///   main actor, so calls through this type reach the backing instance one at a time in any
-///   case.
+/// - Note: The `Sendable` conformance is unchecked because this store holds a `UserDefaults`
+///   reference, and Foundation does not mark that class `Sendable`. Sharing it is safe
+///   because Apple documents `UserDefaults` itself as thread-safe, so concurrent use of a
+///   single instance is that class's own guarantee rather than something this type arranges.
+///   The reference is the only state the store holds, and nothing here replaces it after
+///   initialisation.
 public struct UserDefaultsLiveStore: UserDefaultsStoreProtocol, @unchecked Sendable {
 
-    /// The backing instance, resolved once when this store is created.
     private let userDefaults: UserDefaults
 
     /// A store backed by the app's own defaults.
