@@ -100,9 +100,11 @@ Prefer `prepareDependencies`. A stored property has nowhere sensible to handle a
 
 ## Testing
 
-The default value for this dependency is already `UserDefaultsTestStore`, an in-memory store that touches no real suite, so a test that simply reads and writes needs no override at all.
+The default value for this dependency is already `UserDefaultsTestStore`, an in-memory store that touches no real suite, so nothing has to be registered before a test can run.
 
-To start from known state, create a store, seed it, and inject it:
+Do not lean on that default to isolate one test from the next. `UserDefaultsKey.testValue` is a stored property, so every test that does not override the dependency shares a single store for the lifetime of the process, and a value written by one test is still there for the next one to read.
+
+Give each test its own store, seed it, and inject it:
 
 ```swift
 let store = UserDefaultsTestStore()
@@ -115,7 +117,7 @@ withDependencies {
 }
 ```
 
-Create one store per test. Nothing survives the process, but a store shared between tests carries values from one into the next.
+Nothing survives the process, so the only state a test can inherit is state another test in the same run left behind.
 
 ### Fidelity to Live `UserDefaults`
 
