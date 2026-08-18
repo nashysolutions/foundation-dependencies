@@ -13,7 +13,8 @@ let package = Package(
     products: [
         .library(
             name: "FoundationDependencies",
-            targets: ["FoundationDependencies"]),
+            targets: ["FoundationDependencies"]
+        )
     ],
     dependencies: [
         .package(url: "https://github.com/pointfreeco/swift-dependencies.git", .upToNextMinor(from: "1.8.1")),
@@ -28,6 +29,10 @@ let package = Package(
                 .product(name: "Versioning", package: "versioning"),
                 .product(name: "Files", package: "files")
             ]
+        ),
+        .testTarget(
+            name: "FoundationDependenciesTests",
+            dependencies: ["FoundationDependencies"]
         )
     ]
 )
