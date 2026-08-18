@@ -37,12 +37,12 @@ struct UserDefaultsStoreRoundTripTests {
         }
     }
 
-    /// Infinity and not-a-number are included because they are the values a store is
-    /// most likely to mangle, and because they read back unchanged here while the
-    /// strings `"inf"` and `"nan"` do not.
+    /// Not-a-number and the infinities also round trip unchanged, but they are
+    /// asserted in `UserDefaultsSpecialValueTests` along with every other reader's
+    /// answer for them, rather than here.
     @Test(
         "A double reads back as written",
-        arguments: StoreKind.allCases, [0, 3.14, -1.5, .infinity, -.infinity, .nan]
+        arguments: StoreKind.allCases, [0, 3.14, -1.5]
     )
     func doubleRoundTrips(kind: StoreKind, value: Double) throws {
         try withStore(kind) { store in

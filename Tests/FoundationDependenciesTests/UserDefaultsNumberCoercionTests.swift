@@ -39,26 +39,24 @@ let integerFromStringCases: [Coercion<String, Int>] = [
 /// Rows for `int` reading a stored `Double`.
 ///
 /// The value truncates toward zero and saturates at the bounds of `Int` rather than
-/// wrapping or trapping. Not-a-number is the row worth keeping: `Int(Double.nan)`
-/// traps in Swift, so a store that reached it would crash rather than disagree.
+/// wrapping. Not-a-number and the two infinities are not here: they live in
+/// `UserDefaultsSpecialValueTests`, which states every reader's answer for them in
+/// one place.
 let integerFromDoubleCases: [Coercion<Double, Int>] = [
     Coercion(3.99, reads: 3),
     Coercion(-3.99, reads: -3),
     Coercion(2.9, reads: 2),
     Coercion(-2.9, reads: -2),
     Coercion(1e18, reads: 1_000_000_000_000_000_000),
-    Coercion(1e30, reads: .max),
-    Coercion(.infinity, reads: .max),
-    Coercion(-.infinity, reads: .min),
-    Coercion(.nan, reads: 0)
+    Coercion(1e30, reads: .max)
 ]
 
 /// Rows for `double` reading a stored `String`.
 ///
 /// This reader takes the leading numeric run and ignores whatever follows, which is
 /// where it parts company with `int`: `"42abc"` reads as `42` here and as `0` there.
-/// The spelled-out `"inf"` and `"nan"` are not treated as numbers, so both read as
-/// zero, unlike the stored `Double` values of the same names.
+/// The spelled-out `"inf"` and `"nan"` are not here either; they are in
+/// `UserDefaultsSpecialValueTests`, alongside the stored doubles they do not equal.
 let doubleFromStringCases: [Coercion<String, Double>] = [
     Coercion("3.14", reads: 3.14),
     Coercion("42", reads: 42),
@@ -73,8 +71,6 @@ let doubleFromStringCases: [Coercion<String, Double>] = [
     Coercion("1E3", reads: 1000),
     Coercion("5e", reads: 5),
     Coercion("5e+", reads: 5),
-    Coercion("inf", reads: 0),
-    Coercion("nan", reads: 0),
     Coercion("0x1A", reads: 0),
     Coercion("--3", reads: 0),
     Coercion("abc", reads: 0),

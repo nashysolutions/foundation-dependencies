@@ -50,21 +50,20 @@ let booleanFromStringCases: [Coercion<String, Bool>] = [
 
 /// Rows for `bool` reading a stored `Double`.
 ///
-/// The rule is "not equal to zero", which is why not-a-number is true: it compares
-/// unequal to everything, zero included.
+/// The rule is "not equal to zero". Not-a-number and the infinities follow from that
+/// same rule and are asserted in `UserDefaultsSpecialValueTests`, which is where all
+/// three special values live.
 let booleanFromDoubleCases: [Coercion<Double, Bool>] = [
     Coercion(1.5, reads: true),
     Coercion(0.5, reads: true),
-    Coercion(0, reads: false),
-    Coercion(.nan, reads: true),
-    Coercion(.infinity, reads: true),
-    Coercion(-.infinity, reads: true)
+    Coercion(0, reads: false)
 ]
 
 /// Rows for `string` reading a stored `Double`.
 ///
-/// The formatting is `NSNumber`'s, which drops a redundant fractional part, keeps the
-/// sign on negative zero, and spells the two special values out in full.
+/// The formatting is `NSNumber`'s, which drops a redundant fractional part and keeps
+/// the sign on negative zero. The special values are spelled out rather than
+/// formatted, so they are stated in `UserDefaultsSpecialValueTests` instead.
 let stringFromDoubleCases: [Coercion<Double, String>] = [
     Coercion(3.14, reads: "3.14"),
     Coercion(100.5, reads: "100.5"),
@@ -72,9 +71,7 @@ let stringFromDoubleCases: [Coercion<Double, String>] = [
     Coercion(3.0, reads: "3"),
     Coercion(-0.0, reads: "-0"),
     Coercion(1e20, reads: "1e+20"),
-    Coercion(1e-20, reads: "9.999999999999999e-21"),
-    Coercion(.nan, reads: "nan"),
-    Coercion(.infinity, reads: "inf")
+    Coercion(1e-20, reads: "9.999999999999999e-21")
 ]
 
 /// What every conformer must return from `bool`, `string`, `stringArray` and `date`
