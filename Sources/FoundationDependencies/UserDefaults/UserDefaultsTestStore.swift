@@ -23,10 +23,11 @@ import Foundation
 /// reading a stored `"YES"` through ``bool`` returns `true`, exactly as they would
 /// in production.
 ///
-/// The rules are not the obvious ones, and they are not symmetrical between
-/// readers, so ``LiveUserDefaultsSemantics`` documents each one against a measured
-/// example. Every rule was measured against a real `UserDefaults` suite rather than
-/// taken from the prose documentation, which describes the coercions only in
+/// The rules are not the obvious ones and they are not symmetrical between readers.
+/// `LiveUserDefaultsSemantics` is their authoritative home: it states each rule
+/// against a measured example, and the readers below point at it rather than
+/// restating it. Every rule was measured against a real `UserDefaults` suite rather
+/// than taken from the prose documentation, which describes the coercions only in
 /// general terms.
 ///
 /// Writes are validated the same way. `UserDefaults` raises
@@ -55,10 +56,15 @@ import Foundation
 /// at this conformance when it did.
 public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked Sendable {
 
-    /// The backing store, keyed exactly as `UserDefaults` would key it.
+    /// The backing store.
     ///
-    /// Only ever read or written from the `@MainActor` closures below. See the
-    /// thread safety note on the type.
+    /// Holds each value exactly as it was written, without the normalisation into
+    /// Foundation types that live `UserDefaults` performs on the way in. A value
+    /// written through ``setInt`` is still a Swift `Int` when it comes back out of
+    /// ``object``, which is the divergence described on the type.
+    ///
+    /// Only ever read or written from the `@MainActor` closures below and from the
+    /// `@MainActor` helper at the foot of the type. See the thread safety note.
     private var storage: [String: Any] = [:]
 
     /// Creates an empty store.
@@ -68,9 +74,8 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
 
     /// Retrieves a Boolean value for the specified key.
     ///
-    /// Numbers are true when non-zero. Strings are true only when they spell
-    /// `"YES"` or `"true"` in any casing, or are exactly `"1"`. Everything else,
-    /// including a missing key, is `false`.
+    /// Coerces the stored value as live `UserDefaults` does. See
+    /// `LiveUserDefaultsSemantics.boolean(from:)` for the rules.
     public var bool: @MainActor @Sendable (String) -> Bool {
         { key in
             LiveUserDefaultsSemantics.boolean(from: self.storage[key])
@@ -79,9 +84,8 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
 
     /// Retrieves an integer value for the specified key.
     ///
-    /// Doubles truncate toward zero and strings must be an optionally signed run of
-    /// digits in full. Anything that cannot be read as a whole number, including a
-    /// missing key, is `0`.
+    /// Coerces the stored value as live `UserDefaults` does. See
+    /// `LiveUserDefaultsSemantics.integer(from:)` for the rules.
     public var int: @MainActor @Sendable (String) -> Int {
         { key in
             LiveUserDefaultsSemantics.integer(from: self.storage[key])
@@ -90,8 +94,8 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
 
     /// Retrieves a double value for the specified key.
     ///
-    /// Strings contribute their leading numeric run, so `"3.14abc"` reads as
-    /// `3.14`. Anything with no numeric prefix, including a missing key, is `0`.
+    /// Coerces the stored value as live `UserDefaults` does. See
+    /// `LiveUserDefaultsSemantics.double(from:)` for the rules.
     public var double: @MainActor @Sendable (String) -> Double {
         { key in
             LiveUserDefaultsSemantics.double(from: self.storage[key])
@@ -100,9 +104,8 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
 
     /// Retrieves a string value for the specified key.
     ///
-    /// Numbers are stringified the way `NSNumber` stringifies them, so a stored
-    /// `3.0` reads as `"3"` and a stored `true` reads as `"1"`. Dates, data and
-    /// arrays have no string form and read as `nil`, as does a missing key.
+    /// Coerces the stored value as live `UserDefaults` does. See
+    /// `LiveUserDefaultsSemantics.string(from:)` for the rules.
     public var string: @MainActor @Sendable (String) -> String? {
         { key in
             LiveUserDefaultsSemantics.string(from: self.storage[key])
@@ -111,8 +114,8 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
 
     /// Retrieves an array of strings for the specified key.
     ///
-    /// Returns `nil` unless every element is a string, so an array of numbers reads
-    /// as `nil` rather than as an empty array.
+    /// Coerces the stored value as live `UserDefaults` does. See
+    /// `LiveUserDefaultsSemantics.stringArray(from:)` for the rules.
     public var stringArray: @MainActor @Sendable (String) -> [String]? {
         { key in
             LiveUserDefaultsSemantics.stringArray(from: self.storage[key])
@@ -238,217 +241,5 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
         } else {
             storage.removeValue(forKey: key)
         }
-    }
-}
-
-/// The type coercions live `UserDefaults` applies when the stored value is not
-/// already the type being read.
-///
-/// Each rule below was measured against a real `UserDefaults` suite rather than
-/// inferred from the documentation, which says only that values are converted. The
-/// measured rules differ from the obvious guesses in three ways worth knowing:
-///
-/// - The string readers do not agree with each other. ``integer(from:)`` demands a
-///   whole-string match while ``double(from:)`` takes a numeric prefix, so
-///   `"42abc"` reads as `0` through one and `42.0` through the other.
-/// - ``integer(from:)`` is 32-bit when reading a string and 64-bit otherwise, so a
-///   string can saturate where an equivalent stored number does not.
-/// - ``boolean(from:)`` accepts far fewer spellings than `NSString.boolValue` does.
-///   `"2"` and `"y"` are both `false` here and both `true` through that property.
-private enum LiveUserDefaultsSemantics {
-
-    /// Reproduces `UserDefaults.bool(forKey:)`.
-    ///
-    /// A number is `true` when it is not zero, so `2`, `-1` and `0.5` are all
-    /// `true`. A string is `true` only when it reads as `"yes"` or `"true"` in any
-    /// casing, or is exactly `"1"`; `"2"`, `"01"`, `" 1"` and `"y"` are all `false`.
-    /// Dates, arrays, data and a missing key are `false`.
-    static func boolean(from value: Any?) -> Bool {
-        switch value {
-        case let flag as Bool:
-            flag
-        case let number as Int:
-            number != 0
-        case let number as Double:
-            !number.isNaN && number != 0
-        case let number as NSNumber:
-            number.doubleValue != 0
-        case let text as String:
-            text.lowercased() == "yes" || text.lowercased() == "true" || text == "1"
-        default:
-            false
-        }
-    }
-
-    /// Reproduces `UserDefaults.integer(forKey:)`.
-    ///
-    /// A `Bool` reads as `1` or `0`. A `Double` truncates toward zero, so `3.99`
-    /// reads as `3` and `-3.99` as `-3`, saturating at the bounds of `Int`. A string
-    /// must be an optionally signed run of digits in its entirety after any leading
-    /// spaces or tabs, so `"42"` and `" 42"` read as `42` while `"3.99"`, `"42abc"`
-    /// and `"42 "` all read as `0`. Dates, arrays, data and a missing key read as
-    /// `0`.
-    static func integer(from value: Any?) -> Int {
-        switch value {
-        case let flag as Bool:
-            flag ? 1 : 0
-        case let number as Int:
-            number
-        case let number as Double:
-            truncating(number)
-        case let number as NSNumber:
-            number.intValue
-        case let text as String:
-            integer(fromString: text)
-        default:
-            0
-        }
-    }
-
-    /// Reproduces `UserDefaults.double(forKey:)`.
-    ///
-    /// A `Bool` reads as `1` or `0`. A string contributes its leading numeric run
-    /// after any leading spaces or tabs and ignores whatever follows, so `"3.14abc"`
-    /// reads as `3.14` and `"42abc"` as `42`. A string with no numeric prefix reads
-    /// as `0`, and that includes `"inf"` and `"nan"`, neither of which is treated as
-    /// a number. Dates, arrays, data and a missing key read as `0`.
-    static func double(from value: Any?) -> Double {
-        switch value {
-        case let flag as Bool:
-            flag ? 1 : 0
-        case let number as Int:
-            Double(number)
-        case let number as Double:
-            number
-        case let number as NSNumber:
-            number.doubleValue
-        case let text as String:
-            double(fromString: text)
-        default:
-            0
-        }
-    }
-
-    /// Reproduces `UserDefaults.string(forKey:)`.
-    ///
-    /// Numbers are stringified as `NSNumber` stringifies them, which drops a
-    /// redundant fractional part, so a stored `3.0` reads as `"3"` rather than
-    /// `"3.0"`. A `Bool` reads as `"1"` or `"0"`. Dates, data, arrays and a missing
-    /// key read as `nil`.
-    static func string(from value: Any?) -> String? {
-        switch value {
-        case let text as String:
-            text
-        case let flag as Bool:
-            flag ? "1" : "0"
-        case let number as Int:
-            NSNumber(value: number).stringValue
-        case let number as Double:
-            NSNumber(value: number).stringValue
-        case let number as NSNumber:
-            number.stringValue
-        default:
-            nil
-        }
-    }
-
-    /// Reproduces `UserDefaults.stringArray(forKey:)`.
-    ///
-    /// Returns the array only when every element is a string. A mixed array or an
-    /// array of numbers reads as `nil` rather than as a filtered or empty array.
-    static func stringArray(from value: Any?) -> [String]? {
-        value as? [String]
-    }
-
-    // MARK: - String parsing
-
-    /// Parses a string the way `integer(forKey:)` does: the whole string, after any
-    /// leading spaces or tabs, must be an optionally signed run of ASCII digits.
-    ///
-    /// The result saturates at the bounds of `Int32` rather than `Int`, which is why
-    /// a stored `"9223372036854775807"` reads as `2147483647` while the same value
-    /// stored as a number reads back whole.
-    private static func integer(fromString text: String) -> Int {
-        let scanned = text.drop(while: isLeadingSpace)
-        var digits = scanned
-        var isNegative = false
-        if let sign = digits.first, sign == "+" || sign == "-" {
-            isNegative = sign == "-"
-            digits = digits.dropFirst()
-        }
-        guard !digits.isEmpty, digits.allSatisfy(isDigit) else {
-            return 0
-        }
-        guard let wide = Int64(scanned) else {
-            // Well formed but beyond Int64, such as "9999999999999999999999".
-            return isNegative ? Int(Int32.min) : Int(Int32.max)
-        }
-        return Int(Int32(clamping: wide))
-    }
-
-    /// Parses a string the way `double(forKey:)` does: the longest numeric prefix
-    /// after any leading spaces or tabs, ignoring any trailing characters.
-    ///
-    /// An exponent counts only when at least one digit follows it, so `"5e"` reads
-    /// as `5` rather than failing outright.
-    private static func double(fromString text: String) -> Double {
-        var remainder = text.drop(while: isLeadingSpace)
-        var numeric = ""
-
-        if let sign = remainder.first, sign == "+" || sign == "-" {
-            numeric.append(sign)
-            remainder = remainder.dropFirst()
-        }
-
-        let wholeDigits = remainder.prefix(while: isDigit)
-        numeric += wholeDigits
-        remainder = remainder.dropFirst(wholeDigits.count)
-
-        var fractionDigitCount = 0
-        if remainder.first == "." {
-            let fractionDigits = remainder.dropFirst().prefix(while: isDigit)
-            fractionDigitCount = fractionDigits.count
-            if fractionDigitCount > 0 {
-                numeric += "." + fractionDigits
-            }
-            remainder = remainder.dropFirst(1 + fractionDigitCount)
-        }
-
-        guard wholeDigits.count + fractionDigitCount > 0 else {
-            return 0
-        }
-
-        if let marker = remainder.first, marker == "e" || marker == "E" {
-            var exponent = remainder.dropFirst()
-            var exponentSign = ""
-            if let sign = exponent.first, sign == "+" || sign == "-" {
-                exponentSign = String(sign)
-                exponent = exponent.dropFirst()
-            }
-            let exponentDigits = exponent.prefix(while: isDigit)
-            if !exponentDigits.isEmpty {
-                numeric += "e" + exponentSign + exponentDigits
-            }
-        }
-
-        return Double(numeric) ?? 0
-    }
-
-    /// Truncates toward zero, saturating rather than trapping on a value too large
-    /// for `Int`.
-    private static func truncating(_ value: Double) -> Int {
-        guard !value.isNaN else { return 0 }
-        if value >= Double(Int.max) { return .max }
-        if value <= Double(Int.min) { return .min }
-        return Int(value)
-    }
-
-    /// The only whitespace `UserDefaults` skips before a number in a string.
-    private static func isLeadingSpace(_ character: Character) -> Bool {
-        character == " " || character == "\t"
-    }
-
-    private static func isDigit(_ character: Character) -> Bool {
-        character >= "0" && character <= "9"
     }
 }
