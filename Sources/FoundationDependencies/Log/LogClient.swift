@@ -38,9 +38,19 @@ private extension Logger {
     /// warns under `-strict-concurrency=complete`. Passing the key type instead leaves the key
     /// path to be formed inside swift-dependencies, where it is accepted.
     ///
-    /// The Swift 6 language mode does treat such a key path as safe to share, so if this
-    /// package ever moves to that language mode the shorter key path form becomes correct
-    /// again and this comment can go with it.
+    /// The shorter form becomes available again once the compiler infers that a key path
+    /// written in source is safe to share, which is what SE-0418 does for a literal whose
+    /// captures are all themselves safe to share. Two routes turn that inference on, and
+    /// both are declared in `Package.swift`: the Swift 6 language mode enables it as part of
+    /// the mode, and the Swift 5 language mode can enable it on its own as the upcoming
+    /// feature `InferSendableFromCaptures`. Neither is reachable from here today, because
+    /// `enableUpcomingFeature` needs swift-tools-version 5.8 and this package declares 5.7,
+    /// which is also why the manifest is not the place this was fixed.
+    ///
+    /// Revisit when that tools version moves. The check is to put the key path back and run
+    /// `swift package clean && swift build -Xswiftc -strict-concurrency=complete`: a clean
+    /// build means the inference is now reaching this file and the longer form has stopped
+    /// earning its place.
     init(category: String) {
         @Dependency(MainBundleClientKey.self) var mainBundleClient
         let subsystem = (try? mainBundleClient.extractIdentifier()) ?? "Unknown Bundle Identifier"
