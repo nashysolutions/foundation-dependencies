@@ -11,10 +11,13 @@ import FoundationDependencies
 
 /// The suite the live trap case writes to.
 ///
-/// It cannot carry a UUID like the other live cases do. An exit test body runs in a
-/// fresh process and may not capture anything from the parent, so the name has to be a
-/// constant both sides already know. Nothing is ever stored under it: the call being
-/// made is the one that ends the process.
+/// It is deliberately not the shared scratch suite the contract cases use. The case
+/// below is `async`, so it is suspended while the child process runs and other cases
+/// are free to run in the meantime; emptying the shared suite from here could wipe a
+/// contract case's keys underneath it. A name of its own removes the question.
+///
+/// Nothing is ever stored under it either way. The call being made is the one that
+/// ends the process.
 let trapSuiteName = "foundation-dependencies.contract.trap"
 
 /// A value `UserDefaults` does not accept.
@@ -25,6 +28,11 @@ let trapSuiteName = "foundation-dependencies.contract.trap"
 /// property list path, and the property list path rejects a `URL`.
 func nonPropertyListValue() -> Any {
     URL(fileURLWithPath: "/tmp")
+}
+
+/// Empties the trap suite.
+func emptyTrapSuite() {
+    UserDefaults(suiteName: trapSuiteName)?.removePersistentDomain(forName: trapSuiteName)
 }
 
 /// What every conformer must do when asked to store a value `UserDefaults` cannot
@@ -53,7 +61,7 @@ struct UserDefaultsStoreTrapTests {
                 store.setObject(nonPropertyListValue(), "key")
             }
         }
-        removeScratchSuite(named: trapSuiteName)
+        emptyTrapSuite()
     }
 
     @Test("The test store ends the process")
@@ -90,6 +98,6 @@ struct UserDefaultsStoreTrapTests {
     @Test("The suite name the live case uses is one Foundation accepts")
     func theTrapSuiteNameIsUsable() {
         #expect(UserDefaultsLiveStore(suiteName: trapSuiteName) != nil)
-        removeScratchSuite(named: trapSuiteName)
+        emptyTrapSuite()
     }
 }

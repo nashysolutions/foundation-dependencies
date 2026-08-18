@@ -18,8 +18,8 @@ import FoundationDependencies
 /// production does not have.
 enum StoreKind: String, CaseIterable, Sendable, CustomTestStringConvertible {
 
-    /// `UserDefaultsLiveStore`, backed by a scratch suite created for the case and
-    /// emptied again afterwards.
+    /// `UserDefaultsLiveStore`, backed by the shared scratch suite, which is emptied
+    /// before and after the case.
     case live
 
     /// `UserDefaultsTestStore`, backed by its own in-memory dictionary.
@@ -30,11 +30,37 @@ enum StoreKind: String, CaseIterable, Sendable, CustomTestStringConvertible {
     }
 }
 
+/// The one suite every live case runs in.
+///
+/// It is a single fixed name rather than a fresh one per case, and that is deliberate.
+/// macOS persists every suite domain it is ever shown: a suite per case left hundreds
+/// of empty property lists in the preferences folder, one per case per run, growing on
+/// every later run. Deleting the files does not fix it, because `cfprefsd` writes them
+/// back after the test process has exited, so a check run straight after `swift test`
+/// reports a clean folder and is simply measuring too early. One name means one file.
+let scratchSuiteName = "foundation-dependencies.contract"
+
+/// How many live cases are currently inside the shared scratch suite.
+///
+/// Sharing one suite is only safe while no two live cases are in it at once. That
+/// holds today because every live case is a synchronous body inside a `@MainActor`
+/// test, so a case holds the main actor from the moment it takes the suite until it
+/// gives it back, and Swift Testing cannot start another one in between.
+///
+/// That is a property of how these cases are written, not something the type system
+/// enforces, so it is checked rather than assumed. Adding an `await` inside
+/// `withScratchSuite` or inside a live case body would break it, and this counter is
+/// what turns that into a clear failure naming the cause instead of a rare flake in
+/// whichever case happened to lose the race.
+@MainActor
+private var liveCasesInScratchSuite = 0
+
 /// Runs `body` against a store of the given kind, created fresh for this case.
 ///
-/// The live kind gets a scratch suite of its own. The name carries a UUID so cases
-/// running in parallel can never land in the same suite, and the suite's contents are
-/// removed afterwards whether the body passed, failed, or threw.
+/// The live kind gets the shared scratch suite, emptied on the way in as well as on
+/// the way out. Emptying on the way in matters: it means a case cannot inherit state
+/// from an earlier case that failed part way through, or from an interrupted run of
+/// the whole target.
 ///
 /// The initialiser is failable, so a name Foundation refuses would otherwise show up
 /// as every read returning a default. `#require` turns that into one clear failure at
@@ -48,45 +74,47 @@ func withStore(
     case .testDouble:
         try body(UserDefaultsTestStore())
     case .live:
-        let suiteName = scratchSuiteName()
-        let store = try #require(
-            UserDefaultsLiveStore(suiteName: suiteName),
-            "Foundation refused the scratch suite name \(suiteName)"
-        )
-        defer {
-            removeScratchSuite(named: suiteName)
+        try withScratchSuite { suiteName in
+            let store = try #require(
+                UserDefaultsLiveStore(suiteName: suiteName),
+                "Foundation refused the scratch suite name \(suiteName)"
+            )
+            try body(store)
         }
-        try body(store)
     }
 }
 
-/// A suite name no other case will use.
+/// Reserves the shared scratch suite for the duration of `body`, emptied before and
+/// after.
 ///
-/// The prefix is there so that a suite left behind by an interrupted run is traceable
-/// back to this test target rather than looking like an app's own preferences.
-func scratchSuiteName() -> String {
-    "foundation-dependencies.contract.\(UUID().uuidString)"
+/// Used directly by the cases that need the suite name itself rather than a store
+/// built over it.
+@MainActor
+func withScratchSuite(_ body: (String) throws -> Void) rethrows {
+    liveCasesInScratchSuite += 1
+    defer { liveCasesInScratchSuite -= 1 }
+
+    #expect(
+        liveCasesInScratchSuite == 1,
+        """
+        Two live cases were inside the shared scratch suite at the same time, so one \
+        was reading and writing keys the other owned. They share one suite by design; \
+        see the note on liveCasesInScratchSuite for why, and for the rule that keeps \
+        them from overlapping.
+        """
+    )
+
+    emptyScratchSuite()
+    defer { emptyScratchSuite() }
+
+    try body(scratchSuiteName)
 }
 
-/// Empties a scratch suite and deletes the file behind it.
-///
-/// `removePersistentDomain(forName:)` clears the contents but leaves an empty property
-/// list on disk, so the two steps together are what stop a run from leaving residue
-/// behind. Every case gets its own suite name, so without the second step a single run
-/// of this target would drop well over a hundred empty files into the preferences
-/// folder, and every later run would add as many again.
-///
-/// The path holds for a non-sandboxed process on macOS, which is what `swift test`
-/// runs. Anywhere else the file is simply not found and the deletion does nothing,
-/// which leaves the emptied suite exactly as `removePersistentDomain` left it rather
-/// than failing the case.
-func removeScratchSuite(named suiteName: String) {
-    UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
-
-    let file = URL(fileURLWithPath: NSHomeDirectory())
-        .appendingPathComponent("Library/Preferences")
-        .appendingPathComponent("\(suiteName).plist")
-    try? FileManager.default.removeItem(at: file)
+/// Empties the shared scratch suite, leaving the key set as it was before any case
+/// ran.
+func emptyScratchSuite() {
+    UserDefaults(suiteName: scratchSuiteName)?
+        .removePersistentDomain(forName: scratchSuiteName)
 }
 
 /// Asserts that every reader reports the documented absent-key result for `key`.

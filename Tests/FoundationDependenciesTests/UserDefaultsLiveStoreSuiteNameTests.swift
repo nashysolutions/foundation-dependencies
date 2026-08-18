@@ -19,14 +19,11 @@ import FoundationDependencies
 @MainActor
 struct UserDefaultsLiveStoreSuiteNameTests {
 
-    @Test("A fresh suite name produces a store")
-    func aFreshSuiteNameProducesAStore() {
-        let suiteName = scratchSuiteName()
-        defer {
-            removeScratchSuite(named: suiteName)
+    @Test("A usable suite name produces a store")
+    func aUsableSuiteNameProducesAStore() {
+        withScratchSuite { suiteName in
+            #expect(UserDefaultsLiveStore(suiteName: suiteName) != nil)
         }
-
-        #expect(UserDefaultsLiveStore(suiteName: suiteName) != nil)
     }
 
     /// The initialiser fails rather than handing back a store whose every read is
@@ -51,46 +48,39 @@ struct UserDefaultsLiveStoreSuiteNameTests {
     /// the store is wired to a live domain and answering.
     @Test("standard is reachable and answers")
     func standardIsReachable() {
-        #expect(UserDefaultsLiveStore.standard.string(scratchSuiteName()) == nil)
+        let neverWritten = "foundation-dependencies.never-written.\(UUID().uuidString)"
+
+        #expect(UserDefaultsLiveStore.standard.string(neverWritten) == nil)
     }
 
     /// Two stores over the same suite name see each other's writes, which is what makes
     /// a shared app group container work at all.
     @Test("Two stores over one suite share their contents")
     func twoStoresOverOneSuiteShareContents() throws {
-        let suiteName = scratchSuiteName()
-        defer {
-            removeScratchSuite(named: suiteName)
+        try withScratchSuite { suiteName in
+            let writer = try #require(UserDefaultsLiveStore(suiteName: suiteName))
+            let reader = try #require(UserDefaultsLiveStore(suiteName: suiteName))
+
+            writer.setInt(42, "key")
+
+            #expect(reader.int("key") == 42)
         }
-
-        let writer = try #require(UserDefaultsLiveStore(suiteName: suiteName))
-        let reader = try #require(UserDefaultsLiveStore(suiteName: suiteName))
-
-        writer.setInt(42, "key")
-
-        #expect(reader.int("key") == 42)
     }
 
     /// The teardown every live contract case relies on. If it did not work, cases would
-    /// leak state into each other through a reused suite and the failure would look
+    /// leak state into each other through the shared suite and the failure would look
     /// like a store bug.
     @Test("Removing the persistent domain empties the suite")
     func removingThePersistentDomainEmptiesTheSuite() throws {
-        let suiteName = scratchSuiteName()
-        defer {
-            removeScratchSuite(named: suiteName)
+        try withScratchSuite { suiteName in
+            let store = try #require(UserDefaultsLiveStore(suiteName: suiteName))
+            store.setInt(42, "key")
+            #expect(store.int("key") == 42)
+
+            UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
+
+            let reopened = try #require(UserDefaultsLiveStore(suiteName: suiteName))
+            expectAbsent(reopened, key: "key")
         }
-
-        let store = try #require(UserDefaultsLiveStore(suiteName: suiteName))
-        store.setInt(42, "key")
-        #expect(store.int("key") == 42)
-
-        // Called directly rather than through `removeScratchSuite`, because the
-        // emptying is the behaviour under test here. The deferred call above is only
-        // there to take the emptied file away afterwards.
-        UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
-
-        let reopened = try #require(UserDefaultsLiveStore(suiteName: suiteName))
-        expectAbsent(reopened, key: "key")
     }
 }
