@@ -81,7 +81,7 @@ Failing loudly is the right response here. A suite name is a compile-time consta
 
 Use an app group identifier, in the style of `group.com.example.myapp`. That is the form which lets an app extension read the same values.
 
-Two names are refused. Foundation rejects the current app's own bundle identifier, and it rejects `NSGlobalDomain`. Neither can be recovered from, so the initialiser returns `nil` rather than handing back a store whose every read is empty and every write is discarded. There is no suite name that reaches the app's own defaults, which is what `UserDefaultsLiveStore.standard` is for.
+Two names are refused. Foundation rejects the current app's own bundle identifier, and it rejects `NSGlobalDomain`. Neither can be recovered from, so the initialiser returns `nil` rather than handing back a store whose every read is empty and every write is discarded. No supported suite name reaches the app's own defaults, which is what `UserDefaultsLiveStore.standard` is for.
 
 A name Foundation accepts is not necessarily the container you meant. A mistyped app group identifier, or one the app holds no entitlement for, still produces a working store, but it is backed by a private domain rather than the shared container. Nothing at this layer can tell the two apart, so check the spelling against the app's App Groups entitlement.
 
