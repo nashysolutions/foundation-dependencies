@@ -50,13 +50,18 @@ Register the store once, as early in the app lifecycle as you can:
 ```swift
 import Dependencies
 import FoundationDependencies
+import SwiftUI
 
 @main
 struct MyApp: App {
 
     init() {
+        guard let store = UserDefaultsLiveStore(suiteName: "group.com.example.myapp") else {
+            preconditionFailure("group.com.example.myapp is not a usable suite name")
+        }
+
         prepareDependencies {
-            $0.userDefaultsClient = UserDefaultsLiveStore(suiteName: "group.com.example.myapp")
+            $0.userDefaultsClient = store
         }
     }
 
@@ -80,7 +85,9 @@ A debug build reports the missing registration as a runtime warning. In a releas
 
 An app group identifier such as `group.com.example.myapp` is the intended form, and it is what lets an app extension read the same values.
 
-Do not pass your app's own bundle identifier or `NSGlobalDomain`. Foundation rejects both, `UserDefaults(suiteName:)` returns `nil`, and because `UserDefaultsLiveStore` holds that result as an optional, every read then returns a default and every write is discarded with no error and no warning.
+Do not pass your app's own bundle identifier or `NSGlobalDomain`. Foundation refuses both, so `UserDefaultsLiveStore(suiteName:)` returns `nil` and no store is produced at all. That is why the example above handles the optional rather than assigning it straight through, and why it fails loudly when it is `nil`. A suite name is a compile-time constant, so a `nil` result is a mistake in the name itself and will be `nil` on every launch on every device. Substituting a fallback store would hide it and move the symptom to wherever the values are later read.
+
+No supported suite name reaches the app's own defaults. When the values are not shared with another process, register `UserDefaultsLiveStore.standard` instead, which reads and writes those domains and is not failable.
 
 ### Registering via `DependencyKey`
 
@@ -92,8 +99,8 @@ import FoundationDependencies
 
 extension UserDefaultsKey: @retroactive DependencyKey {
 
-    public static let liveValue: any UserDefaultsStoreProtocol = UserDefaultsLiveStore(suiteName: "group.com.example.myapp")
+    public static let liveValue: any UserDefaultsStoreProtocol = UserDefaultsLiveStore.standard
 }
 ```
 
-Prefer `prepareDependencies`. A retroactive conformance is declared in your module but belongs to this package's type, so if `FoundationDependencies` ever declares `DependencyKey` itself, every consumer holding a copy of it hits a duplicate conformance and stops compiling.
+Prefer `prepareDependencies`. A stored property has nowhere sensible to handle a failable initialiser, so this route is awkward for anything but `standard`. A retroactive conformance is also declared in your module while belonging to this package's type, so if `FoundationDependencies` ever declares `DependencyKey` itself, every consumer holding a copy of it hits a duplicate conformance and stops compiling.
