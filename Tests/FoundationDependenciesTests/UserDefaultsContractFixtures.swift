@@ -38,7 +38,7 @@ struct Coercion<Written: Sendable, Read: Sendable>: Sendable, CustomTestStringCo
 ///
 /// These tables exist because a stored `"42"` and a stored `42` read back differently,
 /// so a case name that printed both as `42` would leave a failure hard to place.
-func described(_ value: Any) -> String {
+private func described(_ value: Any) -> String {
     if let text = value as? String {
         return "\"\(text)\""
     }
@@ -80,11 +80,12 @@ enum SeededValue: String, CaseIterable, Sendable, CustomTestStringConvertible {
     case date
     case object
 
-    /// The samples with no numeric reading and no string reading either.
+    /// The samples that read as zero through `int` and `double` and as `nil` through
+    /// `string`.
     ///
-    /// A stored date or array is zero through `int` and `double` and `nil` through
-    /// `string`. A stored `"abc"` is also zero through the number readers, but it is
-    /// still a string, so it does not belong in this list.
+    /// Reading as zero is not on its own enough to belong here. A stored `"abc"` is
+    /// zero through both number readers too, but it is still a string, so `string`
+    /// returns it rather than `nil` and it stays out of this list.
     static let nonNumericCases: [SeededValue] = [.stringArray, .date]
 
     var testDescription: String {

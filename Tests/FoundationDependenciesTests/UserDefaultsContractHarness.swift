@@ -38,7 +38,7 @@ enum StoreKind: String, CaseIterable, Sendable, CustomTestStringConvertible {
 /// every later run. Deleting the files does not fix it, because `cfprefsd` writes them
 /// back after the test process has exited, so a check run straight after `swift test`
 /// reports a clean folder and is simply measuring too early. One name means one file.
-let scratchSuiteName = "foundation-dependencies.contract"
+private let scratchSuiteName = "foundation-dependencies.contract"
 
 /// How many live cases are currently inside the shared scratch suite.
 ///
@@ -112,7 +112,7 @@ func withScratchSuite(_ body: (String) throws -> Void) rethrows {
 
 /// Empties the shared scratch suite, leaving the key set as it was before any case
 /// ran.
-func emptyScratchSuite() {
+private func emptyScratchSuite() {
     UserDefaults(suiteName: scratchSuiteName)?
         .removePersistentDomain(forName: scratchSuiteName)
 }

@@ -18,7 +18,7 @@ import FoundationDependencies
 ///
 /// Nothing is ever stored under it either way. The call being made is the one that
 /// ends the process.
-let trapSuiteName = "foundation-dependencies.contract.trap"
+private let trapSuiteName = "foundation-dependencies.contract.trap"
 
 /// A value `UserDefaults` does not accept.
 ///
@@ -26,12 +26,12 @@ let trapSuiteName = "foundation-dependencies.contract.trap"
 /// `UserDefaults` does have a dedicated `set(_:forKey:)` overload that takes one. That
 /// overload is not this endpoint: `setObject` takes `Any?`, which binds to the
 /// property list path, and the property list path rejects a `URL`.
-func nonPropertyListValue() -> Any {
+private func nonPropertyListValue() -> Any {
     URL(fileURLWithPath: "/tmp")
 }
 
 /// Empties the trap suite.
-func emptyTrapSuite() {
+private func emptyTrapSuite() {
     UserDefaults(suiteName: trapSuiteName)?.removePersistentDomain(forName: trapSuiteName)
 }
 
