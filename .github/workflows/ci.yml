@@ -24,13 +24,18 @@
 #    run inside it anyway, so that adding a cache later degrades the job to
 #    merely slow rather than silently vacuous.
 #
-# 3. The runner image is pinned; the Xcode inside it is not.
+# 3. The runner image is pinned; the Xcode inside it is chosen by measurement.
 #    `macos-latest` migrates between images without a commit, which turns a
-#    toolchain change into an unexplained red build on an untouched branch.
-#    Pinning the image fixes that. Pinning a specific `/Applications/Xcode_*`
-#    path as well would add a second thing that rots, and it rots into "file
-#    not found" rather than a compiler diagnostic. Instead every job records
-#    the toolchain it used, so any run can be read back against its compiler.
+#    toolchain change into an unexplained red build on an untouched branch, so
+#    the image label is pinned. The image's *default* Xcode is not good enough
+#    on its own: this package's test suite needs Swift 6.2 for Swift Testing's
+#    exit tests, and macos-15 defaults to 6.1.2, where the suite does not
+#    compile and says so in thirty lines of macro errors that never mention the
+#    version. `select-swift-toolchain` picks the newest installed Xcode that
+#    clears the floor and fails with one sentence naming the requirement if
+#    none does. Selecting by measured version rather than by a hardcoded
+#    `/Applications/Xcode_*` path means the workflow survives the image
+#    relabelling its Xcodes, which a path does not.
 #
 # 4. SwiftLint is pinned by version and verified by checksum.
 #    An unpinned linter turns somebody else's release into a red build on a
@@ -68,10 +73,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Record the toolchain
-        run: |
-          swift --version
-          xcodebuild -version
+      - name: Select the toolchain
+        uses: ./.github/actions/select-swift-toolchain
 
       - name: Build
         run: swift build
@@ -103,8 +106,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Record the toolchain
-        run: swift --version
+      - name: Select the toolchain
+        uses: ./.github/actions/select-swift-toolchain
 
       # A no-op on a fresh runner. It is here so that this job stays honest if
       # a future change adds caching to the workflow: see note 2 at the top.
@@ -180,8 +183,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Record the toolchain
-        run: swift --version
+      - name: Select the toolchain
+        uses: ./.github/actions/select-swift-toolchain
 
       - name: Type-check every Swift fence in the README and the DocC articles
         # See Scripts/check-documentation-examples.swift for what this does and
@@ -198,7 +201,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Record the toolchain
+      - name: Select the toolchain
+        uses: ./.github/actions/select-swift-toolchain
+
+      - name: Record the Xcode
         run: xcodebuild -version
 
       - name: Build
