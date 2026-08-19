@@ -6,7 +6,7 @@ Use this dependency to access `Bundle` information safely within Swift Concurren
 @Dependency(\.mainBundleClient) var bundle
 
 do {
-    let url = try bundle.url(forResource: "Localisable", withExtension: "strings")
+    let url = try bundle.urlForResource("Localisable", "strings")
 } catch {
     // Handle error
 }
