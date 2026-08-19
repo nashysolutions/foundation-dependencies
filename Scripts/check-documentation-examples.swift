@@ -70,6 +70,34 @@
 //  either shape type-checks; it is reported with the file-scope diagnostics if
 //  neither does.
 //
+//  Which fences are read
+//  ---------------------
+//  Issue #44 is the shape of the damage here. The opener used to be matched
+//  with `trimmed == "```swift"`, an exact string comparison, so a fence opened
+//  with ```Swift or with ```swift title="Registering" was invisible: never
+//  compiled, never exempt, and — the part that matters — never reported. A
+//  planted fence containing `let broken: Int = "not an Int"` left the counts at
+//  exactly their baseline and exited 0, so the output of a run with a hole in
+//  it was byte-identical to the output of a clean one.
+//
+//  Two changes, and the second is the durable one:
+//
+//  * **The language is the first word of the info string, compared without
+//    regard to case.** That covers the shapes above, and decorated openers such
+//    as `swift,no-copy`.
+//
+//  * **A fence naming a language this script reads as Swift-ish but does not
+//    compile is a failure, not a silent pass.** Matching more shapes only ever
+//    closes the shapes someone thought of; ```swiftui or ```swift-output would
+//    have gone the same way as ```Swift did. So an opener whose language merely
+//    *contains* `swift` is reported with its file and line and fails the run,
+//    which is the standard the exemption list already meets — an exemption that
+//    matches nothing prints and exits 1 rather than quietly covering less than
+//    it used to. Being red is the correct state for such a fence: either it is
+//    Swift and this gate is not checking it, or it is not Swift and is
+//    mislabelled. Both need a person, and neither should sit behind a green
+//    tick.
+//
 
 import Foundation
 
@@ -182,6 +210,73 @@ struct Fence {
     var label: String { "\(path) fence \(ordinal) (line \(firstCodeLine))" }
 }
 
+/// A fence that looks like it holds Swift but that this script did not check,
+/// recorded so that the skip is something a reader can see rather than an
+/// absence they would have to notice.
+struct SkippedFence {
+
+    let path: String
+    let line: Int
+    let opener: String
+    let reason: String
+
+    var label: String { "\(path):\(line)" }
+}
+
+/// The opening delimiter of a fenced code block, split into the two parts that
+/// decide what happens to it.
+struct FenceOpener {
+
+    /// The delimiter run itself, such as ``` or ~~~~. Both the character and
+    /// the length are kept because CommonMark closes a fence only with a run of
+    /// the same character that is at least as long, and this script now
+    /// recognises openers other than exactly three backticks.
+    let delimiter: String
+
+    /// Everything after the delimiter, such as `swift title="Registering"`.
+    let infoString: String
+
+    /// The language the fence claims to be written in.
+    ///
+    /// By convention that is the first word of the info string. The word ends
+    /// at whitespace or at the punctuation decorated fences use to attach
+    /// attributes, so `swift,no-copy` and `swift{highlight=2}` both report
+    /// `swift` rather than the whole decorated token.
+    var language: String {
+        let terminators: Set<Character> = [" ", "\t", ",", ";", ":", "{"]
+        return String(infoString.prefix { !terminators.contains($0) }).lowercased()
+    }
+}
+
+/// What this script does with a fence, decided from its opener alone.
+///
+/// Never from its contents: a shell fence demonstrating `swift build` is not a
+/// Swift fence, and reading the body to decide would make the rule impossible
+/// to predict from the markdown.
+enum FenceKind {
+
+    /// Compile it.
+    case swift
+
+    /// Report it and fail. See the note at the top of the file: an opener that
+    /// only *resembles* `swift` is the recurring risk, because the set of
+    /// shapes nobody anticipated is the one that cannot be enumerated.
+    case swiftish
+
+    /// Not this script's business — a shell transcript, a JSON payload.
+    case other
+}
+
+func classify(_ opener: FenceOpener) -> FenceKind {
+    let language = opener.language
+
+    if language == "swift" {
+        return .swift
+    }
+
+    return language.contains("swift") ? .swiftish : .other
+}
+
 // MARK: - Shell
 
 struct CommandResult {
@@ -264,45 +359,116 @@ func markdownPaths(root: String) -> [String] {
     return paths.sorted()
 }
 
-func fences(inMarkdownAt path: String, root: String) -> [Fence] {
-    guard let contents = try? String(contentsOfFile: root + "/" + path, encoding: .utf8) else {
-        return []
+/// Reads a line as a fence delimiter, or returns `nil` if it is not one.
+func fenceOpener(_ trimmed: String) -> FenceOpener? {
+    guard let character = trimmed.first, character == "`" || character == "~" else {
+        return nil
     }
 
-    var found: [Fence] = []
+    let delimiter = trimmed.prefix { $0 == character }
+    guard delimiter.count >= 3 else { return nil }
+
+    return FenceOpener(
+        delimiter: String(delimiter),
+        infoString: String(trimmed.dropFirst(delimiter.count))
+            .trimmingCharacters(in: .whitespaces)
+    )
+}
+
+/// Whether this line closes a fence that `opener` opened.
+///
+/// CommonMark closes a fence with a run of the *same* character, at least as
+/// long as the opener, and nothing else on the line. Honouring the length is
+/// what makes it safe to recognise openers longer than three backticks: the
+/// exact `trimmed == "```"` test this replaces would never have closed a
+/// four-backtick fence, so it would have swallowed the rest of the file.
+func closesFence(_ trimmed: String, openedBy opener: FenceOpener) -> Bool {
+    guard let character = opener.delimiter.first else { return false }
+
+    let run = trimmed.prefix { $0 == character }
+    return run.count >= opener.delimiter.count && run.count == trimmed.count
+}
+
+/// The Swift fences in one markdown file, and the Swift-ish ones it declined.
+struct Scan {
+
+    var fences: [Fence] = []
+    var skipped: [SkippedFence] = []
+}
+
+func scan(markdownAt path: String, root: String) -> Scan {
+    guard let contents = try? String(contentsOfFile: root + "/" + path, encoding: .utf8) else {
+        return Scan()
+    }
+
+    var scan = Scan()
     var collecting: [String] = []
-    var isCollecting = false
-    var openedAt = 0
+    var open: (opener: FenceOpener, kind: FenceKind, line: Int)?
 
     for (index, line) in contents.components(separatedBy: "\n").enumerated() {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
 
-        if isCollecting, trimmed == "```" {
-            isCollecting = false
-            found.append(
-                Fence(
+        // Every fence is tracked to its closing delimiter, not only the Swift
+        // ones, so that the contents of a fence are never read as markdown. An
+        // article explaining how to *write* a ```swift fence would otherwise
+        // have its example opener mistaken for a real one.
+        if let current = open {
+            if closesFence(trimmed, openedBy: current.opener) {
+                if case .swift = current.kind {
+                    scan.fences.append(
+                        Fence(
+                            path: path,
+                            ordinal: scan.fences.count + 1,
+                            firstCodeLine: current.line + 2,
+                            code: normalised(collecting.joined(separator: "\n"))
+                        )
+                    )
+                }
+                open = nil
+            } else if case .swift = current.kind {
+                collecting.append(line)
+            }
+            continue
+        }
+
+        guard let opener = fenceOpener(trimmed) else { continue }
+        let kind = classify(opener)
+
+        if case .swiftish = kind {
+            scan.skipped.append(
+                SkippedFence(
                     path: path,
-                    ordinal: found.count + 1,
-                    firstCodeLine: openedAt + 2,
-                    code: normalised(collecting.joined(separator: "\n"))
+                    line: index + 1,
+                    opener: trimmed,
+                    reason: """
+                        The language is `\(opener.language)` rather than `swift`, so this \
+                        script does not compile the fence and nothing else checks it.
+                        """
                 )
             )
-            continue
         }
 
-        if isCollecting {
-            collecting.append(line)
-            continue
-        }
-
-        if trimmed == "```swift" {
-            isCollecting = true
-            collecting = []
-            openedAt = index
-        }
+        open = (opener, kind, index)
+        collecting = []
     }
 
-    return found
+    // An unterminated Swift fence is the same defect as an unmatched opener —
+    // its contents were never checked and, before this, nothing said so.
+    if let current = open, case .swift = current.kind {
+        scan.skipped.append(
+            SkippedFence(
+                path: path,
+                line: current.line + 1,
+                opener: current.opener.delimiter + current.opener.infoString,
+                reason: """
+                    The fence is never closed, so its contents were read to the end of the \
+                    file and never compiled.
+                    """
+            )
+        )
+    }
+
+    return scan
 }
 
 // MARK: - Cross-fence references
@@ -620,7 +786,10 @@ let environment = TypeCheckEnvironment(
     target: "\(architecture)-apple-macosx13.0"
 )
 
-let allFences = markdownPaths(root: root).flatMap { fences(inMarkdownAt: $0, root: root) }
+let markdownPathsToScan = markdownPaths(root: root)
+let scans = markdownPathsToScan.map { scan(markdownAt: $0, root: root) }
+let allFences = scans.flatMap(\.fences)
+let skipped = scans.flatMap(\.skipped)
 
 guard !allFences.isEmpty else {
     print("error: found no Swift fences at all, which means the scan is broken")
@@ -641,8 +810,27 @@ for fence in allFences {
     }
 }
 
-print("Found \(allFences.count) Swift fences across \(markdownPaths(root: root).count) files.")
-print("\(checkable.count) to compile, \(exempt.count) exempt.\n")
+// The headline number counts the fences this script declined as well as the
+// ones it read, so that a skip *moves* it. Under the exact-match opener this
+// replaces, planting an uncompilable fence behind a ```Swift opener left every
+// number here at its baseline: the output of a run with a hole in it was
+// byte-identical to the output of a clean one, which is why #44 went unnoticed
+// until someone went looking for it.
+let swiftishCount = allFences.count + skipped.count
+
+// Read as a reconciliation — 29 + 4 + 0 = 33 — so make it one. A fence lands in
+// exactly one of the buckets above, which makes this true by construction
+// today; it is here as a tripwire for the edit that adds a fourth bucket and
+// updates the loop without updating the summary.
+guard checkable.count + exempt.count + skipped.count == swiftishCount else {
+    print("error: \(swiftishCount) fences found, but \(checkable.count) to compile")
+    print("+ \(exempt.count) exempt + \(skipped.count) skipped does not account for them.")
+    print("The scan and the summary disagree, so neither can be trusted.")
+    exit(1)
+}
+
+print("Found \(swiftishCount) Swift fences across \(markdownPathsToScan.count) files.")
+print("\(checkable.count) to compile, \(exempt.count) exempt, \(skipped.count) skipped.\n")
 
 var failures: [(fence: Fence, headline: String, detail: String)] = []
 
@@ -735,15 +923,34 @@ if !unusedExemptions.isEmpty {
     }
 }
 
+if !skipped.isEmpty {
+    print("\n\(String(repeating: "-", count: 72))")
+    print("\nThese fences name a language close enough to Swift that this script will")
+    print("not assume they are something else, but not close enough for it to compile")
+    print("them, so nothing in this repository checks what they claim. Rename the")
+    print("fence to `swift`, or teach this script the shape. Leaving it green is the")
+    print("one thing that is not on the table:\n")
+    for skip in skipped {
+        print("  \(skip.label)  \(skip.opener)")
+        print("            \(skip.reason.replacingOccurrences(of: "\n", with: "\n            "))")
+        print("")
+    }
+}
+
 print("\n\(String(repeating: "=", count: 72))")
 
-if failures.isEmpty, unusedExemptions.isEmpty {
+if failures.isEmpty, unusedExemptions.isEmpty, skipped.isEmpty {
     print("\(checkable.count) documentation examples compile without warnings. \(exempt.count) exempt.")
     exit(0)
 }
 
-print("\(failures.count) documentation example(s) do not compile cleanly.")
+if !failures.isEmpty {
+    print("\(failures.count) documentation example(s) do not compile cleanly.")
+}
 if !unusedExemptions.isEmpty {
     print("\(unusedExemptions.count) exemption(s) match nothing.")
+}
+if !skipped.isEmpty {
+    print("\(skipped.count) Swift-ish fence(s) were skipped without being checked.")
 }
 exit(1)
