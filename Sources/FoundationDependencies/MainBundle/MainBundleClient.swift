@@ -11,7 +11,7 @@ import Versioning
 
 /// A resource provider for accessing values from the main app bundle.
 public struct MainBundleClient: BundleResourceProvider, Sendable {
-    
+
     /// Returns the URL for a resource in the main bundle.
     ///
     /// - Parameters:
@@ -20,7 +20,7 @@ public struct MainBundleClient: BundleResourceProvider, Sendable {
     /// - Throws: An error if the resource cannot be found or accessed.
     /// - Returns: The URL for the requested resource.
     public var urlForResource: @Sendable (_ fileName: String, _ fileExtension: String) throws -> URL
-    
+
     /// Extracts the bundle identifier from the main bundle.
     ///
     /// - Throws: An error if the identifier cannot be retrieved.
@@ -87,7 +87,7 @@ public struct MainBundleClient: BundleResourceProvider, Sendable {
 }
 
 public enum MainBundleClientKey: TestDependencyKey {
-    
+
    public static let testValue: MainBundleClient = {
         return MainBundleClient(urlForResource: { name, ext in
             throw XcodeBundleError.resourceNotFound(name: name + ext)
@@ -99,16 +99,16 @@ public enum MainBundleClientKey: TestDependencyKey {
             throw XcodeBundleError.shortVersionStringMissing
         }, extractBuildNumber: {
             throw XcodeBundleError.buildNumberMissing
-        }, imageAsset: { name in
+        }, imageAsset: { _ in
             return ImageAsset(name: "", bundle: .main)
-        }, colorAsset: { name in
+        }, colorAsset: { _ in
             return ColorAsset(name: "", bundle: .main)
         })
     }()
 }
 
 public extension DependencyValues {
-    
+
     var mainBundleClient: MainBundleClient {
         get { self[MainBundleClientKey.self] }
         set { self[MainBundleClientKey.self] = newValue }

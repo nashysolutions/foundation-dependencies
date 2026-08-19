@@ -18,7 +18,7 @@ import Dependencies
 ///
 /// This type is `Sendable` and can be used as a dependency in Swift Concurrency environments.
 public struct UserDefaultsClient: UserDefaultsStoreProtocol {
-    
+
     // MARK: - Stored Closures
 
     /// Retrieves a Boolean value for a given key.
@@ -47,13 +47,13 @@ public struct UserDefaultsClient: UserDefaultsStoreProtocol {
 
     /// Stores a Boolean value for a given key.
     public var setBool: @MainActor @Sendable (Bool, String) -> Void
-    
+
     /// Stores an integer value for a given key.
     public var setInt: @MainActor @Sendable (Int, String) -> Void
-    
+
     /// Stores a double value for a given key.
     public var setDouble: @MainActor @Sendable (Double, String) -> Void
-    
+
     /// Stores a string value for a given key.
     public var setString: @MainActor @Sendable (String?, String) -> Void
 

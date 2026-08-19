@@ -79,8 +79,14 @@ public struct FileSystemClient: Sendable {
     ///   - keys: Resource keys to prefetch and materialize for each URL. Defaults to an empty list.
     ///   - options: Enumeration options that affect which items are returned and how. Defaults to an empty set.
     /// - Returns: An array of `DirectoryEntry` values for each item in the folder.
-    /// - Throws: An error if the directory does not exist, is not a directory, or cannot otherwise be accessed or enumerated (for example, due to permissions).
-    public var contents: @Sendable (_ url: URL, _ keys: [URLResourceKey], _ options: FileManager.DirectoryEnumerationOptions) throws -> [DirectoryEntry]
+    /// - Throws: An error if the directory does not exist, is not a directory,
+    ///   or cannot otherwise be accessed or enumerated (for example, due to
+    ///   permissions).
+    public var contents: @Sendable (
+        _ url: URL,
+        _ keys: [URLResourceKey],
+        _ options: FileManager.DirectoryEnumerationOptions
+    ) throws -> [DirectoryEntry]
 
     /// Resolves the file system URL for a logical directory (e.g. `.documents`, `.caches`).
     ///
@@ -111,7 +117,11 @@ public struct FileSystemClient: Sendable {
         copyResource: @Sendable @escaping (_ from: URL, _ to: URL) throws -> Void,
         write: @Sendable @escaping (_ data: Data, _ url: URL, _ options: NSData.WritingOptions) throws -> Void,
         read: @Sendable @escaping (_ url: URL) throws -> Data,
-        contents: @Sendable @escaping (_ url: URL, _ keys: [URLResourceKey], _ options: FileManager.DirectoryEnumerationOptions) throws -> [DirectoryEntry],
+        contents: @Sendable @escaping (
+            _ url: URL,
+            _ keys: [URLResourceKey],
+            _ options: FileManager.DirectoryEnumerationOptions
+        ) throws -> [DirectoryEntry],
         urlForDirectory: @Sendable @escaping (_ directory: FileSystemDirectory) throws -> URL
     ) {
         self.fileExists = fileExists
@@ -143,10 +153,9 @@ public enum FileSystemClientKey: TestDependencyKey {
 }
 
 public extension DependencyValues {
-    
+
     var fileSystemClient: FileSystemClient {
         get { self[FileSystemClientKey.self] }
         set { self[FileSystemClientKey.self] = newValue }
     }
 }
-

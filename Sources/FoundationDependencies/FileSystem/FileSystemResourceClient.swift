@@ -72,7 +72,7 @@ public extension DependencyValues {
 }
 
 private struct MockFileSystemStore: FileSystemOperations {
-    
+
     struct DummyFolder: Directory {
         let location = URL(fileURLWithPath: "/dev/null")
     }
@@ -90,7 +90,11 @@ private struct MockFileSystemStore: FileSystemOperations {
         func url(for directory: FileSystemDirectory) throws -> URL {
             URL(fileURLWithPath: "/dev/null")
         }
-        func contentsOfDirectory(at url: URL, includingPropertiesForKeys keys: [URLResourceKey], options: FileManager.DirectoryEnumerationOptions) throws -> [URL] {
+        func contentsOfDirectory(
+            at url: URL,
+            includingPropertiesForKeys keys: [URLResourceKey],
+            options: FileManager.DirectoryEnumerationOptions
+        ) throws -> [URL] {
             return []
         }
     }

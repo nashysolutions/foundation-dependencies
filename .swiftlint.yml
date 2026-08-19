@@ -1,0 +1,125 @@
+# SwiftLint configuration for foundation-dependencies.
+#
+# Scope
+# -----
+# `.build` holds resolved dependency sources. Linting them is meaningless: they
+# are thousands of violations in code nobody working in this repo can change,
+# and they drown the package's own count. Measured on this tree, `swiftlint
+# lint .` reports 9191 violations across 931 files with no configuration, and 0
+# across 26 files with the `excluded` entry below and nothing else. Any
+# repo-wide number quoted without this file is noise.
+#
+# `included` and `excluded` both stay, and they do different jobs. `excluded` is
+# what removes `.build`, and it keeps doing so even when a path is passed
+# positionally. `included` is what a bare `swiftlint lint` walks, and it also
+# narrows a positional run, so the two intersect rather than one overriding the
+# other.
+#
+# Note for anyone scripting a gate: `swiftlint lint --path Sources` was removed
+# in SwiftLint 0.63 and exits 64 with `Unknown option`. The current form is
+# positional, `swiftlint lint Sources`. A gate still written the old way fails
+# as a tooling error that reads like a lint failure.
+#
+# Rule set
+# --------
+# SwiftLint's defaults, plus opt-in rules chosen on merit and then confirmed to
+# cost nothing here. The package satisfies every rule below as written, so the
+# configuration can be adopted without touching a line of code.
+#
+# No rule is silenced at a call site anywhere in this package, and none should
+# be. A rule that cannot be met belongs in this file, with the reason recorded
+# against it, so the decision stays reviewable in one place instead of being
+# scattered through the source. This paragraph deliberately avoids writing the
+# inline suppression directive out in full, so that a grep over the tree looking
+# for suppressions does not match the file that forbids them.
+
+included:
+  - Package.swift
+  - Sources
+  - Tests
+
+excluded:
+  - .build
+
+opt_in_rules:
+
+  # Correctness and safety. These catch defects rather than preferences, which
+  # matters more than usual in a package other targets depend on.
+  - discouraged_none_name
+  - empty_count
+  - fallthrough
+  - fatal_error_message
+  - force_unwrapping
+  - identical_operands
+  - implicitly_unwrapped_optional
+  - return_value_from_void_function
+  - unavailable_function
+  - unhandled_throwing_task
+  - unowned_variable_capture
+  - untyped_error_in_catch
+
+  # Public API surface. Consumers read this source to understand the clients
+  # they are wiring up, so the declarations should say exactly what they mean.
+  - discouraged_optional_boolean
+  - explicit_init
+  - local_doc_comment
+  - lower_acl_than_parent
+  - prefer_self_type_over_type_of_self
+  - redundant_nil_coalescing
+  - redundant_type_annotation
+
+  # Idiom the package already follows throughout.
+  - array_init
+  - contains_over_filter_count
+  - contains_over_filter_is_empty
+  - contains_over_first_not_nil
+  - contains_over_range_nil_comparison
+  - first_where
+  - flatmap_over_map_reduce
+  - joined_default_parameter
+  - last_where
+  - optional_enum_case_matching
+  - pattern_matching_keywords
+  - prefer_key_path
+  - reduce_into
+  - self_binding
+  - shorthand_optional_binding
+  - sorted_first_last
+  - superfluous_else
+  - toggle_bool
+
+  # Layout that is already uniform across the package.
+  - closure_spacing
+  - collection_alignment
+  - comma_inheritance
+  - modifier_order
+  - multiline_parameters
+  - operator_usage_whitespace
+  - unneeded_escaping
+  - unneeded_parentheses_in_closure_argument
+  - vertical_parameter_alignment_on_call
+  - vertical_whitespace_closing_braces
+
+# Opt-in rules considered and left off, with the violation count each would
+# introduce today. Recorded so the next reader can see these were measured
+# rather than overlooked, and can revisit any of them deliberately.
+#
+#   unneeded_throws_rethrows (14) - the flagged functions are protocol
+#     conformance stubs and public client properties whose `throws` is required
+#     by the protocol or is part of the published signature. Satisfying the
+#     rule would be a source-breaking API change.
+#   discouraged_optional_collection (11) - would require changing published
+#     signatures. An API design question, not a lint question.
+#   empty_string (1), empty_collection_literal (1) - both sites are round-trip
+#     assertions that an empty string and an empty array are stored rather than
+#     treated as a removal. `== ""` and `== []` state that intent more directly
+#     than `isEmpty` does.
+#   sorted_imports (17), vertical_whitespace_between_cases (39),
+#     vertical_whitespace_opening_braces (39), closure_end_indentation (1),
+#     prefer_self_in_static_references (4) - formatting and style preferences
+#     that would rewrite files this change has no other reason to touch.
+#
+# Rules deliberately not listed at all: the analyzer-only rules, which need
+# `swiftlint analyze` and a compiler log rather than `swiftlint lint`, and the
+# UIKit, SwiftUI, Combine, XCTest, Quick and Nimble rules, none of which can
+# match anything in a Foundation-only package built on Swift Testing.

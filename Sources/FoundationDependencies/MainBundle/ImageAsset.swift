@@ -14,23 +14,23 @@ import UIKit
 
 /// A type-safe wrapper for referencing image assets from a given bundle.
 public struct ImageAsset: Hashable, Sendable, Identifiable {
-    
+
     /// The identifier of the image asset.
     ///
     /// This returns `self`, making the entire struct its own identifier.
     public var id: ImageAsset { self }
-    
+
     /// The name of the image asset.
     public let name: String
-    
+
     /// The bundle in which the image asset is located.
     public let bundle: Bundle
-    
+
     /// A SwiftUI `Image` instance representing the asset.
     public var image: Image {
         Image(name, bundle: bundle)
     }
-    
+
     /// Creates a new `ImageAsset` with the specified name and bundle.
     ///
     /// - Parameters:
@@ -40,7 +40,7 @@ public struct ImageAsset: Hashable, Sendable, Identifiable {
         self.name = name
         self.bundle = bundle
     }
-    
+
     /// Hashes the essential components of the image asset.
     ///
     /// - Parameter hasher: The hasher to use when combining the components.
@@ -51,7 +51,7 @@ public struct ImageAsset: Hashable, Sendable, Identifiable {
 
 #if canImport(UIKit)
 public extension ImageAsset {
-    
+
     /// Returns the PNG data for the image asset, if available.
     ///
     /// This is only available on platforms that support `UIKit`.

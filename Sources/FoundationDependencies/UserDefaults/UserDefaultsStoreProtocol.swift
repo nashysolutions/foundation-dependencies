@@ -7,9 +7,11 @@
 
 import Foundation
 
-/// A protocol that defines a type-safe and actor-isolated interface for interacting with a `UserDefaults`-like key-value store.
+/// A protocol that defines a type-safe and actor-isolated interface for
+/// interacting with a `UserDefaults`-like key-value store.
 ///
-/// All operations are performed on the main actor to ensure thread safety when accessing or modifying underlying storage.
+/// All operations are performed on the main actor to ensure thread safety
+/// when accessing or modifying underlying storage.
 /// This protocol is `Sendable` and can be safely used in concurrent contexts where main-actor isolation is maintained.
 public protocol UserDefaultsStoreProtocol: Sendable {
 
