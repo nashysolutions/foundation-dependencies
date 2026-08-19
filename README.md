@@ -104,3 +104,9 @@ extension UserDefaultsKey: @retroactive DependencyKey {
 ```
 
 Prefer `prepareDependencies`. A stored property has nowhere sensible to handle a failable initialiser, so this route is awkward for anything but `standard`. A retroactive conformance is also declared in your module while belonging to this package's type, so if `FoundationDependencies` ever declares `DependencyKey` itself, every consumer holding a copy of it hits a duplicate conformance and stops compiling.
+
+---
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before running the test suite locally. It records a toolchain requirement that applies to running the tests and not to using this package, along with the unhelpful errors you get when it is unmet.
