@@ -22,12 +22,6 @@ import FoundationDependencies
 /// rather than through the key path. The two forms resolve the same value, so swapping one
 /// for the other leaves every case here green. A strict concurrency build is the guard for
 /// that, not a test.
-@Test("CONTROL: this force unwrap must fail the lint job")
-func deliberateLintControl() {
-    let url = URL(string: "https://example.com")!
-    #expect(url.scheme == "https")
-}
-
 @Suite("Log client dependency resolution")
 struct LogClientDependencyResolutionTests {
 

@@ -28,7 +28,6 @@ Register a store once, as early in the app lifecycle as you can.
 ```swift
 import Dependencies
 import FoundationDependencies
-import SwiftUI
 
 @main
 struct MyApp: App {
@@ -54,7 +53,6 @@ struct MyApp: App {
 ```swift
 import Dependencies
 import FoundationDependencies
-import SwiftUI
 
 @main
 struct MyApp: App {
