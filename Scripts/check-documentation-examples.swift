@@ -425,9 +425,31 @@ func functionWrappedSourceFile(for fence: Fence) -> String {
 struct TypeCheckEnvironment {
 
     let stubsPath: String
-    let binaryPath: String
+    let modulePath: String
     let sdkPath: String
     let target: String
+}
+
+/// The one directory holding the built `.swiftmodule` files.
+///
+/// Deliberately not the build directory itself. That directory also contains a
+/// `*.build` subdirectory per target, several of which carry a `module.modulemap`,
+/// and SwiftPM builds the macro plugins swift-syntax needs twice — once as
+/// `X.build` and once as `X-tool.build`. Putting the build directory on the
+/// import path therefore offers the same module under two names and every
+/// type-check fails with `redefinition of module 'SwiftParser'`, which looks
+/// exactly like a broken documentation example and is not one.
+///
+/// Locating the package's own module and using its directory avoids guessing at
+/// a layout that has changed across SwiftPM versions, and fails with something
+/// readable if the layout changes again.
+func moduleSearchPath(under binaryPath: String) -> String? {
+    let manager = FileManager.default
+    let candidates = [binaryPath + "/Modules", binaryPath]
+
+    return candidates.first { directory in
+        manager.fileExists(atPath: directory + "/FoundationDependencies.swiftmodule")
+    }
 }
 
 func typeCheck(
@@ -473,8 +495,7 @@ func typeCheck(
             "-swift-version", "5",
             "-target", environment.target,
             "-sdk", environment.sdkPath,
-            "-I", environment.binaryPath + "/Modules",
-            "-I", environment.binaryPath
+            "-I", environment.modulePath
         ] + files
     )
 }
@@ -504,6 +525,13 @@ guard binaryPathResult.status == 0 else {
 }
 let binaryPath = binaryPathResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
 
+guard let modulePath = moduleSearchPath(under: binaryPath) else {
+    print("error: no FoundationDependencies.swiftmodule under \(binaryPath).")
+    print("The build layout is not what this script expects, so every fence would")
+    print("fail for want of the package rather than for anything wrong with it.")
+    exit(1)
+}
+
 let sdkResult = run("xcrun", ["--show-sdk-path", "--sdk", "macosx"])
 let sdkPath = sdkResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -514,7 +542,7 @@ let architecture = run("uname", ["-m"]).output.trimmingCharacters(in: .whitespac
 // for a reader on macOS 13.
 let environment = TypeCheckEnvironment(
     stubsPath: root + "/Scripts/DocumentationExampleStubs.swift",
-    binaryPath: binaryPath,
+    modulePath: modulePath,
     sdkPath: sdkPath,
     target: "\(architecture)-apple-macosx13.0"
 )
