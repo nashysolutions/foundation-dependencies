@@ -15,6 +15,12 @@ The `UserDefaultsClient` provides typed access to user defaults using dependency
 
 Until your app registers a live store, that code resolves to `UserDefaultsTestStore` and nothing it writes is persisted. Registering one is the first thing to do.
 
+## Where You Can Call It From
+
+Anywhere. Every endpoint is a nonisolated `@Sendable` closure and none of them is `async`, so a read returns its value in whichever domain asked for it: a background task, a widget extension reaching a shared app group suite, or the main actor. Nothing hops, and a store can be handed across a domain boundary because `UserDefaultsStoreProtocol` requires `Sendable`.
+
+Each store says for itself how it stays safe under that. `UserDefaultsLiveStore` holds one `UserDefaults` instance, which Apple documents as thread-safe, and `UserDefaultsTestStore` keeps its dictionary behind a lock. A `UserDefaultsClient` you build yourself inherits neither guarantee: nothing serialises the closures you supply, so anything mutable they capture needs a lock of its own. See <doc:FileSystemClient> for that shape written out.
+
 ## Registering a Live Store
 
 `UserDefaultsKey` conforms to `TestDependencyKey` only. That is deliberate: which defaults a store should read is app-specific, so the package cannot choose for you and still build in isolation. Nothing else in this package needs the step, so it is easy to miss.

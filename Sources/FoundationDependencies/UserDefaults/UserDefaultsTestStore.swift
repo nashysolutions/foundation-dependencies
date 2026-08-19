@@ -49,11 +49,22 @@ import Foundation
 ///
 /// The `Sendable` conformance is `@unchecked` because `storage` is mutable state on
 /// a class, which the compiler cannot prove is free of races on its own. What makes
-/// it safe is that `storage` is `private` and every closure that touches it is
-/// declared `@MainActor`, so all access is serialised on the main actor. Adding an
-/// endpoint that reads or writes `storage` from anywhere other than a `@MainActor`
-/// closure would break that guarantee, and no compiler diagnostic would point back
-/// at this conformance when it did.
+/// it safe is that `storage` is `private`, that the only two things which touch it
+/// are ``value(forKey:)`` and ``write(_:forKey:)`` at the foot of the type, and that
+/// both hold `lock` for the whole of their access. Every endpoint goes through one
+/// of those two, so no endpoint holds the dictionary open across a suspension or
+/// reads it while another is writing.
+///
+/// The endpoints are nonisolated `@Sendable` closures, matching the rest of this
+/// package, so a store genuinely can be called from two domains at once and the lock
+/// is not ceremony. It replaced an earlier arrangement that made every closure
+/// `@MainActor` and leaned on that for serialisation, which cost every caller off the
+/// main actor a hop and made the double harder to use than the thing it doubles.
+///
+/// The rule the conformance rests on is that nothing else reaches `storage` directly.
+/// Add an endpoint that does and the guarantee is gone, with no compiler diagnostic
+/// pointing back at this conformance; call one of the two accessors instead and there
+/// is nothing to remember.
 public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked Sendable {
 
     /// The backing store.
@@ -63,9 +74,17 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
     /// written through ``setInt`` is still a Swift `Int` when it comes back out of
     /// ``object``, which is the divergence described on the type.
     ///
-    /// Only ever read or written from the `@MainActor` closures below and from the
-    /// `@MainActor` helper at the foot of the type. See the thread safety note.
+    /// Only ever read through ``value(forKey:)`` and written through
+    /// ``write(_:forKey:)``, both of which hold ``lock``. See the thread safety note.
     private var storage: [String: Any] = [:]
+
+    /// Guards ``storage``.
+    ///
+    /// `NSLock` rather than an actor because every endpoint on
+    /// ``UserDefaultsStoreProtocol`` is synchronous and returns its value to the
+    /// caller. An actor would make each one `async`, which the protocol does not
+    /// allow, and live `UserDefaults` does not require of a caller either.
+    private let lock = NSLock()
 
     /// Creates an empty store.
     public init() {}
@@ -76,9 +95,9 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
     ///
     /// Coerces the stored value as live `UserDefaults` does. See
     /// `LiveUserDefaultsSemantics.boolean(from:)` for the rules.
-    public var bool: @MainActor @Sendable (String) -> Bool {
+    public var bool: @Sendable (String) -> Bool {
         { key in
-            LiveUserDefaultsSemantics.boolean(from: self.storage[key])
+            LiveUserDefaultsSemantics.boolean(from: self.value(forKey: key))
         }
     }
 
@@ -86,9 +105,9 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
     ///
     /// Coerces the stored value as live `UserDefaults` does. See
     /// `LiveUserDefaultsSemantics.integer(from:)` for the rules.
-    public var int: @MainActor @Sendable (String) -> Int {
+    public var int: @Sendable (String) -> Int {
         { key in
-            LiveUserDefaultsSemantics.integer(from: self.storage[key])
+            LiveUserDefaultsSemantics.integer(from: self.value(forKey: key))
         }
     }
 
@@ -96,9 +115,9 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
     ///
     /// Coerces the stored value as live `UserDefaults` does. See
     /// `LiveUserDefaultsSemantics.double(from:)` for the rules.
-    public var double: @MainActor @Sendable (String) -> Double {
+    public var double: @Sendable (String) -> Double {
         { key in
-            LiveUserDefaultsSemantics.double(from: self.storage[key])
+            LiveUserDefaultsSemantics.double(from: self.value(forKey: key))
         }
     }
 
@@ -106,9 +125,9 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
     ///
     /// Coerces the stored value as live `UserDefaults` does. See
     /// `LiveUserDefaultsSemantics.string(from:)` for the rules.
-    public var string: @MainActor @Sendable (String) -> String? {
+    public var string: @Sendable (String) -> String? {
         { key in
-            LiveUserDefaultsSemantics.string(from: self.storage[key])
+            LiveUserDefaultsSemantics.string(from: self.value(forKey: key))
         }
     }
 
@@ -116,9 +135,9 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
     ///
     /// Coerces the stored value as live `UserDefaults` does. See
     /// `LiveUserDefaultsSemantics.stringArray(from:)` for the rules.
-    public var stringArray: @MainActor @Sendable (String) -> [String]? {
+    public var stringArray: @Sendable (String) -> [String]? {
         { key in
-            LiveUserDefaultsSemantics.stringArray(from: self.storage[key])
+            LiveUserDefaultsSemantics.stringArray(from: self.value(forKey: key))
         }
     }
 
@@ -126,9 +145,9 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
     ///
     /// Unlike the typed readers this performs no coercion. See the known divergence
     /// note on the type for how the returned value differs from production.
-    public var object: @MainActor @Sendable (String) -> Any? {
+    public var object: @Sendable (String) -> Any? {
         { key in
-            self.storage[key]
+            self.value(forKey: key)
         }
     }
 
@@ -136,45 +155,45 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
     ///
     /// Returns `nil` when the stored value is anything other than a date. A number
     /// is not interpreted as a time interval, matching production.
-    public var date: @MainActor @Sendable (String) -> Date? {
+    public var date: @Sendable (String) -> Date? {
         { key in
-            self.storage[key] as? Date
+            self.value(forKey: key) as? Date
         }
     }
 
     /// Removes the value associated with the specified key.
-    public var removeObject: @MainActor @Sendable (String) -> Void {
+    public var removeObject: @Sendable (String) -> Void {
         { key in
-            self.storage.removeValue(forKey: key)
+            self.write(nil, forKey: key)
         }
     }
 
     // MARK: - Writing Values
 
     /// Stores a Boolean value for the specified key.
-    public var setBool: @MainActor @Sendable (Bool, String) -> Void {
+    public var setBool: @Sendable (Bool, String) -> Void {
         { value, key in
-            self.storage[key] = value
+            self.write(value, forKey: key)
         }
     }
 
     /// Stores an integer value for the specified key.
-    public var setInt: @MainActor @Sendable (Int, String) -> Void {
+    public var setInt: @Sendable (Int, String) -> Void {
         { value, key in
-            self.storage[key] = value
+            self.write(value, forKey: key)
         }
     }
 
     /// Stores a double value for the specified key.
-    public var setDouble: @MainActor @Sendable (Double, String) -> Void {
+    public var setDouble: @Sendable (Double, String) -> Void {
         { value, key in
-            self.storage[key] = value
+            self.write(value, forKey: key)
         }
     }
 
     /// Stores a string value for the specified key, or removes the key when `value`
     /// is `nil`.
-    public var setString: @MainActor @Sendable (String?, String) -> Void {
+    public var setString: @Sendable (String?, String) -> Void {
         { value, key in
             self.write(value, forKey: key)
         }
@@ -182,7 +201,7 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
 
     /// Stores an array of strings for the specified key, or removes the key when
     /// `value` is `nil`.
-    public var setStringArray: @MainActor @Sendable ([String]?, String) -> Void {
+    public var setStringArray: @Sendable ([String]?, String) -> Void {
         { value, key in
             self.write(value, forKey: key)
         }
@@ -196,7 +215,7 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
     ///   let a test pass against behaviour production does not have. Note that this
     ///   rejects `URL`, which production also rejects through this endpoint even
     ///   though its dedicated `set(_:forKey:)` overload for URLs accepts one.
-    public var setObject: @MainActor @Sendable (Any?, String) -> Void {
+    public var setObject: @Sendable (Any?, String) -> Void {
         { value, key in
             if let value {
                 precondition(
@@ -215,7 +234,7 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
 
     /// Stores a `Date` value for the specified key, or removes the key when `value`
     /// is `nil`.
-    public var setDate: @MainActor @Sendable (Date?, String) -> Void {
+    public var setDate: @Sendable (Date?, String) -> Void {
         { value, key in
             self.write(value, forKey: key)
         }
@@ -223,23 +242,27 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
 
     // MARK: - Storage
 
+    /// Returns the value stored under `key`, or `nil` when there is none.
+    ///
+    /// One of the two places `storage` is touched. Everything the readers do with the
+    /// result — the coercions, the `as? Date` cast — happens after the lock is given
+    /// back, because none of it needs the dictionary.
+    private func value(forKey key: String) -> Any? {
+        lock.withLock { storage[key] }
+    }
+
     /// Stores `value` under `key`, removing the key when `value` is `nil`.
     ///
     /// Live `UserDefaults` treats a `nil` write as a removal rather than storing an
-    /// empty placeholder, so afterwards both stores agree that the key is absent.
-    /// The setters that cannot receive `nil` assign to `storage` directly instead of
-    /// calling this.
-    ///
-    /// Isolated to the main actor because it touches `storage`, which the type's
-    /// `Sendable` conformance assumes is only ever reached from there. The
-    /// annotation makes that a compiler check for this one function rather than
-    /// something a future caller has to remember.
-    @MainActor
+    /// empty placeholder, so afterwards both stores agree that the key is absent. The
+    /// setters that cannot receive `nil` call this too rather than assigning to
+    /// `storage` themselves, which is what keeps the count of places that touch the
+    /// dictionary at two.
     private func write(_ value: Any?, forKey key: String) {
-        if let value {
+        lock.withLock {
+            // Assigning `nil` through a dictionary subscript removes the key rather
+            // than storing an empty box, which is the behaviour described above.
             storage[key] = value
-        } else {
-            storage.removeValue(forKey: key)
         }
     }
 }

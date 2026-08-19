@@ -13,8 +13,11 @@ import Dependencies
 /// `UserDefaultsClient` allows you to inject a custom implementation of user defaults
 /// functionality—useful for testing, mocking, or adapting to different storage systems.
 ///
-/// All operations are isolated to the main actor and explicitly marked `@Sendable`
-/// for safe usage in concurrent contexts.
+/// Every operation is a nonisolated `@Sendable` closure, so a client may be resolved
+/// and called from any concurrency domain. Nothing here serialises those calls, so
+/// whatever the closures you supply capture has to be safe to touch from more than
+/// one at a time. Capturing nothing mutable is the easy way; holding the mutable
+/// state behind a lock, as ``UserDefaultsTestStore`` does, is the other.
 ///
 /// This type is `Sendable` and can be used as a dependency in Swift Concurrency environments.
 public struct UserDefaultsClient: UserDefaultsStoreProtocol {
@@ -22,49 +25,49 @@ public struct UserDefaultsClient: UserDefaultsStoreProtocol {
     // MARK: - Stored Closures
 
     /// Retrieves a Boolean value for a given key.
-    public var bool: @MainActor @Sendable (String) -> Bool
+    public var bool: @Sendable (String) -> Bool
 
     /// Retrieves an integer value for a given key.
-    public var int: @MainActor @Sendable (String) -> Int
+    public var int: @Sendable (String) -> Int
 
     /// Retrieves a double value for a given key.
-    public var double: @MainActor @Sendable (String) -> Double
+    public var double: @Sendable (String) -> Double
 
     /// Retrieves a string value for a given key.
-    public var string: @MainActor @Sendable (String) -> String?
+    public var string: @Sendable (String) -> String?
 
     /// Retrieves an array of strings for a given key.
-    public var stringArray: @MainActor @Sendable (String) -> [String]?
+    public var stringArray: @Sendable (String) -> [String]?
 
     /// Retrieves a raw object for a given key.
-    public var object: @MainActor @Sendable (String) -> Any?
+    public var object: @Sendable (String) -> Any?
 
     /// Retrieves a `Date` value for a given key.
-    public var date: @MainActor @Sendable (String) -> Date?
+    public var date: @Sendable (String) -> Date?
 
     /// Removes the value associated with the given key.
-    public var removeObject: @MainActor @Sendable (String) -> Void
+    public var removeObject: @Sendable (String) -> Void
 
     /// Stores a Boolean value for a given key.
-    public var setBool: @MainActor @Sendable (Bool, String) -> Void
+    public var setBool: @Sendable (Bool, String) -> Void
 
     /// Stores an integer value for a given key.
-    public var setInt: @MainActor @Sendable (Int, String) -> Void
+    public var setInt: @Sendable (Int, String) -> Void
 
     /// Stores a double value for a given key.
-    public var setDouble: @MainActor @Sendable (Double, String) -> Void
+    public var setDouble: @Sendable (Double, String) -> Void
 
     /// Stores a string value for a given key.
-    public var setString: @MainActor @Sendable (String?, String) -> Void
+    public var setString: @Sendable (String?, String) -> Void
 
     /// Stores an array of strings for a given key.
-    public var setStringArray: @MainActor @Sendable ([String]?, String) -> Void
+    public var setStringArray: @Sendable ([String]?, String) -> Void
 
     /// Stores a raw object for a given key.
-    public var setObject: @MainActor @Sendable (Any?, String) -> Void
+    public var setObject: @Sendable (Any?, String) -> Void
 
     /// Stores a `Date` value for a given key.
-    public var setDate: @MainActor @Sendable (Date?, String) -> Void
+    public var setDate: @Sendable (Date?, String) -> Void
 
     // MARK: - Initialiser
 
@@ -87,21 +90,21 @@ public struct UserDefaultsClient: UserDefaultsStoreProtocol {
     ///   - setObject: Closure to store an `Any?` for a given key.
     ///   - setDate: Closure to store a `Date?` for a given key.
     public init(
-        bool: @MainActor @Sendable @escaping (String) -> Bool,
-        int: @MainActor @Sendable @escaping (String) -> Int,
-        double: @MainActor @Sendable @escaping (String) -> Double,
-        string: @MainActor @Sendable @escaping (String) -> String?,
-        stringArray: @MainActor @Sendable @escaping (String) -> [String]?,
-        object: @MainActor @Sendable @escaping (String) -> Any?,
-        date: @MainActor @Sendable @escaping (String) -> Date?,
-        removeObject: @MainActor @Sendable @escaping (String) -> Void,
-        setBool: @MainActor @Sendable @escaping (Bool, String) -> Void,
-        setInt: @MainActor @Sendable @escaping (Int, String) -> Void,
-        setDouble: @MainActor @Sendable @escaping (Double, String) -> Void,
-        setString: @MainActor @Sendable @escaping (String?, String) -> Void,
-        setStringArray: @MainActor @Sendable @escaping ([String]?, String) -> Void,
-        setObject: @MainActor @Sendable @escaping (Any?, String) -> Void,
-        setDate: @MainActor @Sendable @escaping (Date?, String) -> Void
+        bool: @Sendable @escaping (String) -> Bool,
+        int: @Sendable @escaping (String) -> Int,
+        double: @Sendable @escaping (String) -> Double,
+        string: @Sendable @escaping (String) -> String?,
+        stringArray: @Sendable @escaping (String) -> [String]?,
+        object: @Sendable @escaping (String) -> Any?,
+        date: @Sendable @escaping (String) -> Date?,
+        removeObject: @Sendable @escaping (String) -> Void,
+        setBool: @Sendable @escaping (Bool, String) -> Void,
+        setInt: @Sendable @escaping (Int, String) -> Void,
+        setDouble: @Sendable @escaping (Double, String) -> Void,
+        setString: @Sendable @escaping (String?, String) -> Void,
+        setStringArray: @Sendable @escaping ([String]?, String) -> Void,
+        setObject: @Sendable @escaping (Any?, String) -> Void,
+        setDate: @Sendable @escaping (Date?, String) -> Void
     ) {
         self.bool = bool
         self.int = int
