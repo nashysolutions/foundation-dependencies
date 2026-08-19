@@ -1,0 +1,69 @@
+name: Select a Swift toolchain
+description: >
+  Switch the runner to the newest installed Xcode whose Swift meets this
+  package's floor, and fail with the list of what was available if none does.
+
+# Why this exists rather than a hardcoded Xcode path.
+#
+# The test suite needs Swift 6.2 or newer. Tests/UserDefaultsStoreTrapTests.swift
+# asserts that storing a non-property-list value ends the process, which it does
+# with Swift Testing's exit tests -- `#expect(processExitsWith:)` -- and those
+# arrived in Swift 6.2. Nothing in Package.swift records this: `swift-tools-version`
+# is the manifest's API version, not a compiler floor. So on a runner whose default
+# Xcode is older, the suite does not compile and the failure is thirty lines of
+# macro-expansion errors that say nothing about the real cause. This step turns
+# that into one sentence naming the requirement.
+#
+# Selecting by measured version rather than by path also means the workflow does
+# not break when the runner image relabels or drops a particular Xcode. A pinned
+# `/Applications/Xcode_26.0.app` rots into "file not found"; this reports which
+# toolchains were present and what each one offered.
+
+inputs:
+  minimum-swift-version:
+    description: The lowest Swift version this package can be built with.
+    required: false
+    default: "6.2"
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        minimum="${{ inputs.minimum-swift-version }}"
+        chosen=""
+        chosen_version=""
+
+        echo "Toolchains installed on this runner:"
+        for developer in /Applications/Xcode*.app/Contents/Developer; do
+          # `swift` lives in the bundled toolchain, not beside `xcodebuild` in
+          # `Developer/usr/bin`. Looking in the wrong one finds nothing and
+          # silently reports that no toolchain qualifies.
+          binary="$developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift"
+          [ -x "$binary" ] || continue
+
+          version=$("$binary" --version 2>/dev/null \
+            | sed -n 's/.*Apple Swift version \([0-9][0-9.]*\).*/\1/p' | tail -1 || true)
+          [ -n "$version" ] || continue
+
+          echo "  Swift $version  ($developer)"
+
+          # Keep this one only if it clears the floor. `sort -V` puts the lower
+          # version first, so the floor sorting first means version >= floor.
+          [ "$(printf '%s\n%s\n' "$minimum" "$version" | sort -V | head -1)" = "$minimum" ] || continue
+
+          if [ -z "$chosen_version" ] \
+            || [ "$(printf '%s\n%s\n' "$chosen_version" "$version" | sort -V | tail -1)" = "$version" ]; then
+            chosen="$developer"
+            chosen_version="$version"
+          fi
+        done
+
+        if [ -z "$chosen" ]; then
+          echo "::error::This package needs Swift $minimum or newer, and no Xcode on this runner provides it. Tests/UserDefaultsStoreTrapTests.swift uses Swift Testing exit tests, which arrived in Swift 6.2."
+          exit 1
+        fi
+
+        sudo xcode-select --switch "$chosen"
+        echo "Selected Swift $chosen_version from $chosen"
+        swift --version
