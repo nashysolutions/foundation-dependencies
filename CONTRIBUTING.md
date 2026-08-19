@@ -26,7 +26,9 @@ swift --version
 
 CI selects a qualifying toolchain itself and fails with a message naming the
 requirement when no Xcode on the runner provides one, so an unmet floor shows up
-as a local problem rather than a red pull request.
+as a local problem rather than a red pull request. The version CI enforces is
+`minimum-swift-version` in `.github/actions/select-swift-toolchain/action.yml`,
+which is the copy that has to change if the floor ever moves.
 
 ## The floor binds contributors, not consumers
 
