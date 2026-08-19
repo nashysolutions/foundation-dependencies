@@ -403,12 +403,17 @@ func functionWrappedSourceFile(for fence: Fence) -> String {
         }
     }
 
-    // `@MainActor` is the honest context rather than a convenience. Every
-    // accessor on `UserDefaultsStoreProtocol` is declared `@MainActor`, which
-    // the protocol states as its thread-safety contract, and the places these
-    // excerpts are lifted from — an `App.init()`, a view, a view model — are
-    // main-actor isolated already. Wrapping in a nonisolated function would
-    // fail these snippets for being called from a context no reader is in.
+    // `@MainActor` is the honest context rather than a convenience. The places
+    // these excerpts are lifted from — an `App.init()`, a view, a view model —
+    // are main-actor isolated already, so a snippet that touches anything
+    // requiring the main actor is in the context its reader is in.
+    //
+    // It is deliberately the wider context, not the narrower one. No client in
+    // this package requires the main actor any longer; every endpoint is a
+    // nonisolated `@Sendable` closure, and a nonisolated function is callable
+    // from here. A snippet that only compiles because of this annotation is
+    // therefore reaching for something outside this package, which is a fair
+    // thing for a documentation example to do.
     //
     // `async throws` covers the excerpts that use `try` or `await`; a snippet
     // that needs neither is not penalised for it.

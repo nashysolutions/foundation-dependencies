@@ -95,6 +95,10 @@ private let sharedProbeKey = "default-store-isolation.probe"
 /// written rather than one the type system enforces, so it is checked here rather than assumed.
 /// Adding an `await` to either body would break it, and this turns that into a failure naming
 /// the cause instead of a regression test that has quietly stopped measuring anything.
+///
+/// Removing `@MainActor` from either body would break it just as thoroughly. The annotation is
+/// carrying the serialisation on its own now that the store endpoints are nonisolated, where it
+/// used to look like something the endpoints demanded, so it is not the leftover it resembles.
 @MainActor
 private var casesInsideTheProbe = 0
 

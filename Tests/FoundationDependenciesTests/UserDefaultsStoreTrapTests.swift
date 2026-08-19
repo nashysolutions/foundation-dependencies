@@ -54,12 +54,10 @@ struct UserDefaultsStoreTrapTests {
     @Test("The live store ends the process")
     func liveStoreEndsTheProcess() async {
         await #expect(processExitsWith: .failure) {
-            await MainActor.run {
-                guard let store = UserDefaultsLiveStore(suiteName: trapSuiteName) else {
-                    return
-                }
-                store.setObject(nonPropertyListValue(), "key")
+            guard let store = UserDefaultsLiveStore(suiteName: trapSuiteName) else {
+                return
             }
+            store.setObject(nonPropertyListValue(), "key")
         }
         emptyTrapSuite()
     }
@@ -67,10 +65,8 @@ struct UserDefaultsStoreTrapTests {
     @Test("The test store ends the process")
     func testStoreEndsTheProcess() async {
         await #expect(processExitsWith: .failure) {
-            await MainActor.run {
-                let store = UserDefaultsTestStore()
-                store.setObject(nonPropertyListValue(), "key")
-            }
+            let store = UserDefaultsTestStore()
+            store.setObject(nonPropertyListValue(), "key")
         }
     }
 
@@ -84,10 +80,8 @@ struct UserDefaultsStoreTrapTests {
     @Test("A property list value through the same endpoint leaves the process alive")
     func aValidValueLeavesTheProcessAlive() async {
         await #expect(processExitsWith: .success) {
-            await MainActor.run {
-                let store = UserDefaultsTestStore()
-                store.setObject("abc", "key")
-            }
+            let store = UserDefaultsTestStore()
+            store.setObject("abc", "key")
         }
     }
 

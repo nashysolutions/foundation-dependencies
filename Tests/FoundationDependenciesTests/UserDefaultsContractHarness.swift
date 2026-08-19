@@ -52,6 +52,12 @@ private let scratchSuiteName = "foundation-dependencies.contract"
 /// `withScratchSuite` or inside a live case body would break it, and this counter is
 /// what turns that into a clear failure naming the cause instead of a rare flake in
 /// whichever case happened to lose the race.
+///
+/// The `@MainActor` annotations in this file and on the live suites are there for that
+/// reason and no other. The store endpoints used to require the main actor, so the
+/// annotations looked like something the compiler was asking for and the serialisation
+/// came free; the endpoints are nonisolated now, and nothing but this counter would
+/// notice if they were removed as leftovers.
 @MainActor
 private var liveCasesInScratchSuite = 0
 

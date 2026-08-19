@@ -25,12 +25,23 @@ import Foundation
 /// Use this type in production environments where persistent app settings or preferences need
 /// to be stored and retrieved.
 ///
+/// Every endpoint is a nonisolated `@Sendable` closure, so a store can be read and written
+/// from any concurrency domain: a background task, or a widget extension reaching an app
+/// group suite, as readily as the main actor.
+///
 /// - Note: The `Sendable` conformance is unchecked because this store holds a `UserDefaults`
 ///   reference, and Foundation does not mark that class `Sendable`. Sharing it is safe
 ///   because Apple documents `UserDefaults` itself as thread-safe, so concurrent use of a
 ///   single instance is that class's own guarantee rather than something this type arranges.
 ///   The reference is the only state the store holds, and nothing here replaces it after
 ///   initialisation.
+///
+///   Each endpoint below captures the store rather than the `UserDefaults` reference
+///   directly, which is why a `@Sendable` closure is allowed to hold it at all. That routes
+///   the whole type through the one unchecked conformance above, so the argument for safety
+///   is made once, here, instead of fifteen times with nothing written down. Capturing
+///   `userDefaults` on its own would not compile under complete concurrency checking, and
+///   the obvious way to make it compile is a second escape hatch that carries no rationale.
 public struct UserDefaultsLiveStore: UserDefaultsStoreProtocol, @unchecked Sendable {
 
     private let userDefaults: UserDefaults
@@ -71,57 +82,57 @@ public struct UserDefaultsLiveStore: UserDefaultsStoreProtocol, @unchecked Senda
     // MARK: - Reading Values
 
     /// Retrieves a Boolean value for the specified key.
-    public var bool: @MainActor (String) -> Bool {
-        { [userDefaults] key in
+    public var bool: @Sendable (String) -> Bool {
+        { [self] key in
             userDefaults.bool(forKey: key)
         }
     }
 
     /// Retrieves an integer value for the specified key.
-    public var int: @MainActor (String) -> Int {
-        { [userDefaults] key in
+    public var int: @Sendable (String) -> Int {
+        { [self] key in
             userDefaults.integer(forKey: key)
         }
     }
 
     /// Retrieves a double value for the specified key.
-    public var double: @MainActor (String) -> Double {
-        { [userDefaults] key in
+    public var double: @Sendable (String) -> Double {
+        { [self] key in
             userDefaults.double(forKey: key)
         }
     }
 
     /// Retrieves a string value for the specified key.
-    public var string: @MainActor (String) -> String? {
-        { [userDefaults] key in
+    public var string: @Sendable (String) -> String? {
+        { [self] key in
             userDefaults.string(forKey: key)
         }
     }
 
     /// Retrieves an array of strings for the specified key.
-    public var stringArray: @MainActor (String) -> [String]? {
-        { [userDefaults] key in
+    public var stringArray: @Sendable (String) -> [String]? {
+        { [self] key in
             userDefaults.stringArray(forKey: key)
         }
     }
 
     /// Retrieves a raw object for the specified key.
-    public var object: @MainActor (String) -> Any? {
-        { [userDefaults] key in
+    public var object: @Sendable (String) -> Any? {
+        { [self] key in
             userDefaults.object(forKey: key)
         }
     }
 
     /// Retrieves a `Date` value for the specified key.
-    public var date: @MainActor (String) -> Date? {
-        { [userDefaults] key in
+    public var date: @Sendable (String) -> Date? {
+        { [self] key in
             userDefaults.object(forKey: key) as? Date
         }
     }
 
     /// Removes the value associated with the specified key.
-    public var removeObject: @MainActor (String) -> Void {
-        { [userDefaults] key in
+    public var removeObject: @Sendable (String) -> Void {
+        { [self] key in
             userDefaults.removeObject(forKey: key)
         }
     }
@@ -129,50 +140,50 @@ public struct UserDefaultsLiveStore: UserDefaultsStoreProtocol, @unchecked Senda
     // MARK: - Writing Values
 
     /// Stores a Boolean value for the specified key.
-    public var setBool: @MainActor (Bool, String) -> Void {
-        { [userDefaults] value, key in
+    public var setBool: @Sendable (Bool, String) -> Void {
+        { [self] value, key in
             userDefaults.set(value, forKey: key)
         }
     }
 
     /// Stores an integer value for the specified key.
-    public var setInt: @MainActor (Int, String) -> Void {
-        { [userDefaults] value, key in
+    public var setInt: @Sendable (Int, String) -> Void {
+        { [self] value, key in
             userDefaults.set(value, forKey: key)
         }
     }
 
     /// Stores a double value for the specified key.
-    public var setDouble: @MainActor (Double, String) -> Void {
-        { [userDefaults] value, key in
+    public var setDouble: @Sendable (Double, String) -> Void {
+        { [self] value, key in
             userDefaults.set(value, forKey: key)
         }
     }
 
     /// Stores a string value for the specified key.
-    public var setString: @MainActor (String?, String) -> Void {
-        { [userDefaults] value, key in
+    public var setString: @Sendable (String?, String) -> Void {
+        { [self] value, key in
             userDefaults.set(value, forKey: key)
         }
     }
 
     /// Stores an array of strings for the specified key.
-    public var setStringArray: @MainActor ([String]?, String) -> Void {
-        { [userDefaults] value, key in
+    public var setStringArray: @Sendable ([String]?, String) -> Void {
+        { [self] value, key in
             userDefaults.set(value, forKey: key)
         }
     }
 
     /// Stores a raw object for the specified key.
-    public var setObject: @MainActor (Any?, String) -> Void {
-        { [userDefaults] value, key in
+    public var setObject: @Sendable (Any?, String) -> Void {
+        { [self] value, key in
             userDefaults.set(value, forKey: key)
         }
     }
 
     /// Stores a `Date` value for the specified key.
-    public var setDate: @MainActor (Date?, String) -> Void {
-        { [userDefaults] value, key in
+    public var setDate: @Sendable (Date?, String) -> Void {
+        { [self] value, key in
             userDefaults.set(value, forKey: key)
         }
     }
