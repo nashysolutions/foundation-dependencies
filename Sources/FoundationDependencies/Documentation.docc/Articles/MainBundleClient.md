@@ -14,15 +14,37 @@ do {
 
 ## Providing Live Values
 
+This package ships a `testValue` and no `liveValue`, so an app that wants real
+bundle values registers one. Conform a type to `XcodeBundle` and hand its
+accessors to `MainBundleClient`:
+
 ```swift
 final class BundleLocator: XcodeBundle {}
 
-extension MainBundleClientKey: DependencyKey {
-    public static let liveValue = MainBundleClient(
-        ...
-    )
+extension MainBundleClientKey: @retroactive DependencyKey {
+
+    public static let liveValue: MainBundleClient = {
+        let locator = BundleLocator()
+        return MainBundleClient(
+            urlForResource: locator.urlForResource,
+            extractIdentifier: locator.extractIdentifier,
+            extractName: locator.extractName,
+            extractShortVersionString: locator.extractShortVersionString,
+            extractBuildNumber: locator.extractBuildNumber,
+            imageAsset: { BundleLocator.asset(named: $0) },
+            colorAsset: { BundleLocator.color(named: $0) }
+        )
+    }()
 }
 ```
+
+`@retroactive` is required, and is not decoration. `MainBundleClientKey` belongs
+to this package and `DependencyKey` belongs to `swift-dependencies`, so
+declaring the conformance in your own module is a retroactive conformance and
+the compiler warns without it. The same caveat applies as on
+<doc:UserDefaultsClient>: if `FoundationDependencies` ever declares this
+conformance itself, every consumer holding a copy of it hits a duplicate
+conformance and stops compiling.
 
 ## SPM Modules
 

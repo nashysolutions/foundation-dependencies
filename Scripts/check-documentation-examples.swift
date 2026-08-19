@@ -20,8 +20,27 @@
 //
 //      swift Scripts/check-documentation-examples.swift
 //
-//  Exit status is 0 when every fence either type-checks or is recorded below
-//  as deliberately illustrative, and 1 otherwise.
+//  Exit status is 0 when every fence either type-checks cleanly or is recorded
+//  below as deliberately illustrative, and 1 otherwise.
+//
+//  What "cleanly" means, and why
+//  -----------------------------
+//  A fence passes only when it type-checks *and* emits no warning this gate
+//  holds the documentation to. An example that compiles with a warning teaches
+//  the reader to write the warning, so exit status alone is too weak a test.
+//
+//  Issue #36 is the shape of that damage, and it was measured rather than
+//  argued: a retroactive conformance written without `@retroactive` is a
+//  warning and nothing else, so with the status-only check this script
+//  originally had, that defect planted in an ordinary compiled fence printed
+//  `ok` and exited 0.
+//
+//  The verdict is read out of the compiler's output rather than taken from
+//  `-warnings-as-errors`, for one reason: a single group has to be held back
+//  (see `toleratedWarningGroups`), and `-Wwarning no-usage` is rejected as an
+//  unknown warning group by the 6.2 toolchain this package builds with. Should
+//  a later toolchain accept it, the flag is the better mechanism and this
+//  parsing should go.
 //
 //  How a fence is compiled
 //  -----------------------
@@ -102,22 +121,6 @@ let exemptions: [Exemption] = [
         code: #"""
             .product(name: "FoundationDependencies", package: "foundation-dependencies")
             """#
-    ),
-
-    Exemption(
-        reason: """
-            Carries a deliberate elision. The article is showing where a live \
-            value goes, not what goes in it, and `...` is not Swift.
-            """,
-        code: """
-            final class BundleLocator: XcodeBundle {}
-
-            extension MainBundleClientKey: DependencyKey {
-                public static let liveValue = MainBundleClient(
-                    ...
-                )
-            }
-            """
     ),
 
     Exemption(
@@ -435,6 +438,62 @@ struct TypeCheckEnvironment {
     let target: String
 }
 
+/// What one type-check run found.
+///
+/// `status` alone is not the verdict. A fence that compiles with a warning
+/// teaches the reader to write the warning, so a clean run is one that exits
+/// zero *and* emits nothing this gate holds the documentation to.
+struct TypeCheckOutcome {
+
+    let status: Int32
+    let output: String
+    let warnings: [String]
+
+    var isClean: Bool { status == 0 && warnings.isEmpty }
+}
+
+/// Warning groups reported but never failed on, by the tag `swiftc` prints at
+/// the end of a diagnostic's first line.
+///
+/// `no-usage` is here because this script manufactures it rather than finding
+/// it. Half the excerpts in these articles end on the line that matters —
+/// `let url = try bundle.urlForResource("Localisable", "strings")` is showing
+/// the reader what the call hands back — and the binding is unread only
+/// because the function this script wraps the excerpt in has nothing after it.
+/// Failing on that would be demanding the articles consume every value they
+/// demonstrate, which is the documentation getting worse: the same judgement
+/// the excerpt prelude above already makes about imports. Five fences were
+/// measured to trip this group and nothing else.
+///
+/// Add a group here only after reading its diagnostics and finding all of them
+/// to be artefacts of the wrapping. Anything a reader would meet in their own
+/// file stays a failure.
+let toleratedWarningGroups: Set<String> = ["no-usage"]
+
+/// The warnings in a type-check run that this gate holds the documentation to.
+///
+/// Two filters, both load-bearing.
+///
+/// A diagnostic's first line is the one beginning with the file's absolute
+/// path. The compiler repeats the same text on the caret continuation lines,
+/// so matching every occurrence reads one warning as several — the same
+/// over-counting the strict-concurrency job in `ci.yml` guards against.
+///
+/// `ownedPrefixes` keeps the verdict to files this gate wrote: the fence, its
+/// supporting fences, and the stubs. A warning inside a dependency's module
+/// interface is real information and is printed with the rest of the output,
+/// but it is not something an article can be edited to fix, so failing a fence
+/// for it would make this gate red for reasons no author here controls.
+func gatedWarnings(in output: String, ownedPrefixes: [String]) -> [String] {
+    output
+        .components(separatedBy: "\n")
+        .filter { line in
+            guard line.contains(": warning: ") else { return false }
+            guard ownedPrefixes.contains(where: { line.hasPrefix($0) }) else { return false }
+            return !toleratedWarningGroups.contains { line.hasSuffix("[#\($0)]") }
+        }
+}
+
 /// The one directory holding the built `.swiftmodule` files.
 ///
 /// Deliberately not the build directory itself. That directory also contains a
@@ -462,7 +521,7 @@ func typeCheck(
     supporting: [Fence],
     wrapped: Bool,
     in environment: TypeCheckEnvironment
-) -> CommandResult {
+) -> TypeCheckOutcome {
     let directory = NSTemporaryDirectory()
         + "fd-doc-examples/"
         + UUID().uuidString
@@ -493,7 +552,7 @@ func typeCheck(
     try? subject.write(toFile: subjectPath, atomically: true, encoding: .utf8)
     files.append(subjectPath)
 
-    return run(
+    let result = run(
         "swiftc",
         [
             "-typecheck",
@@ -502,6 +561,15 @@ func typeCheck(
             "-sdk", environment.sdkPath,
             "-I", environment.modulePath
         ] + files
+    )
+
+    return TypeCheckOutcome(
+        status: result.status,
+        output: result.output,
+        warnings: gatedWarnings(
+            in: result.output,
+            ownedPrefixes: [directory, environment.stubsPath]
+        )
     )
 }
 
@@ -576,20 +644,20 @@ for fence in allFences {
 print("Found \(allFences.count) Swift fences across \(markdownPaths(root: root).count) files.")
 print("\(checkable.count) to compile, \(exempt.count) exempt.\n")
 
-var failures: [(Fence, String)] = []
+var failures: [(fence: Fence, headline: String, detail: String)] = []
 
 for fence in checkable {
     let supporting = supportingFences(for: fence, among: checkable)
     let atFileScope = typeCheck(fence, supporting: supporting, wrapped: false, in: environment)
 
-    if atFileScope.status == 0 {
+    if atFileScope.isClean {
         print("  ok        \(fence.label)")
         continue
     }
 
     let wrapped = typeCheck(fence, supporting: supporting, wrapped: true, in: environment)
 
-    if wrapped.status == 0 {
+    if wrapped.isClean {
         print("  ok (body) \(fence.label)")
         continue
     }
@@ -605,12 +673,29 @@ for fence in checkable {
         ? "on its own"
         : "with " + supporting.map(\.label).joined(separator: ", ")
 
+    // A fence that type-checked and was failed only for its warnings is a
+    // different defect from one that does not compile, and saying so is the
+    // difference between a reader fixing the example and a reader hunting for
+    // an error that is not there.
+    let cleanlyCompiled = atFileScope.status == 0 || wrapped.status == 0
+    let headline = cleanlyCompiled
+        ? "compiles, but not without warnings"
+        : "does not compile as written"
+
+    // De-duplicated because a warning in a supporting fence or in the stubs is
+    // reported once per shape, and reading it twice suggests two defects.
+    let warnings = Set(atFileScope.warnings + wrapped.warnings).sorted()
+    let warningNote = warnings.isEmpty
+        ? ""
+        : "\nHeld against the documentation:\n" + warnings.joined(separator: "\n") + "\n"
+
     failures.append(
         (
             fence,
+            headline,
             """
             Compiled \(compiled).
-
+            \(warningNote)
             --- as written, at file scope ---
             \(atFileScope.output)
             --- with the body wrapped in a function ---
@@ -634,9 +719,9 @@ for (fence, exemption) in exempt {
 
 if !failures.isEmpty {
     print("\n\(String(repeating: "-", count: 72))")
-    for (fence, output) in failures {
-        print("\n\(fence.label) does not compile as written:\n")
-        print(output)
+    for failure in failures {
+        print("\n\(failure.fence.label) \(failure.headline):\n")
+        print(failure.detail)
     }
 }
 
@@ -653,11 +738,11 @@ if !unusedExemptions.isEmpty {
 print("\n\(String(repeating: "=", count: 72))")
 
 if failures.isEmpty, unusedExemptions.isEmpty {
-    print("\(checkable.count) documentation examples compile. \(exempt.count) exempt.")
+    print("\(checkable.count) documentation examples compile without warnings. \(exempt.count) exempt.")
     exit(0)
 }
 
-print("\(failures.count) documentation example(s) do not compile.")
+print("\(failures.count) documentation example(s) do not compile cleanly.")
 if !unusedExemptions.isEmpty {
     print("\(unusedExemptions.count) exemption(s) match nothing.")
 }
