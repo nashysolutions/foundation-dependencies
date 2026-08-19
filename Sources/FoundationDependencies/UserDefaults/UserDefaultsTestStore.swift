@@ -52,8 +52,7 @@ import Foundation
 /// it safe is that `storage` is `private`, that the only two things which touch it
 /// are ``value(forKey:)`` and ``write(_:forKey:)`` at the foot of the type, and that
 /// both hold `lock` for the whole of their access. Every endpoint goes through one
-/// of those two, so no endpoint holds the dictionary open across a suspension or
-/// reads it while another is writing.
+/// of those two, so no endpoint can read the dictionary while another is writing it.
 ///
 /// The endpoints are nonisolated `@Sendable` closures, matching the rest of this
 /// package, so a store genuinely can be called from two domains at once and the lock
@@ -244,9 +243,9 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
 
     /// Returns the value stored under `key`, or `nil` when there is none.
     ///
-    /// One of the two places `storage` is touched. Everything the readers do with the
-    /// result — the coercions, the `as? Date` cast — happens after the lock is given
-    /// back, because none of it needs the dictionary.
+    /// One of the two places `storage` is touched. The lock is given back before the
+    /// readers do anything with the result, because neither the coercions nor the
+    /// `as? Date` cast needs the dictionary.
     private func value(forKey key: String) -> Any? {
         lock.withLock { storage[key] }
     }
