@@ -127,6 +127,9 @@ jobs:
         # path are counted, which is the diagnostic's own first line, and the
         # result is de-duplicated.
         #
+        # `Scripts/check-documentation-examples.swift` filters the same way for
+        # the same reason, and says so. Change one and read the other.
+        #
         # `-Xswiftc` reaches every target in the graph, dependencies included.
         # A warning in swift-dependencies is real information but it is not a
         # defect in this package and cannot be fixed here, so it is reported
