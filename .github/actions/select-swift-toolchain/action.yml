@@ -10,9 +10,16 @@ description: >
 # with Swift Testing's exit tests -- `#expect(processExitsWith:)` -- and those
 # arrived in Swift 6.2. Nothing in Package.swift records this: `swift-tools-version`
 # is the manifest's API version, not a compiler floor. So on a runner whose default
-# Xcode is older, the suite does not compile and the failure is thirty lines of
+# Xcode is older, the suite does not compile and the failure is a wall of
 # macro-expansion errors that say nothing about the real cause. This step turns
 # that into one sentence naming the requirement.
+#
+# No count is given deliberately. Compiler output is transient and nothing here
+# can fail when a number describing it goes stale, so the number this comment
+# used to carry ("thirty lines") was wrong and stayed wrong: it was the log line
+# count, which over-reports because the compiler repeats text on caret
+# continuation lines. The two places that actually count diagnostics defend
+# against that in code, and are cross-referenced to each other.
 #
 # Selecting by measured version rather than by path also means the workflow does
 # not break when the runner image relabels or drops a particular Xcode. A pinned
