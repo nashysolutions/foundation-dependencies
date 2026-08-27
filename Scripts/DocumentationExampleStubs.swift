@@ -74,6 +74,20 @@ final class ItemB: Sendable {}
 /// the same `ItemA` the first fence produces.
 let itemA = ItemA()
 
+/// A `Codable` value of the reader's own, named by the `decode` and `encode`
+/// examples in `UserDefaultsClient+Codable.swift`.
+///
+/// It belongs here rather than in `Sources` because it is the reader's model
+/// type, not one this package exports: the whole point of those two methods is
+/// that they take whatever `Codable` type the caller already has.
+///
+/// `Sendable` for the reason the types above are, and `Equatable` because it
+/// costs nothing and is what a reader's settings type would be.
+struct Settings: Codable, Sendable, Equatable {
+
+    var theme = "dark"
+}
+
 extension Bundle {
 
     /// Stands in for the resource-bundle accessor SwiftPM synthesises inside a

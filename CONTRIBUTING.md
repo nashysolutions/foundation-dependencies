@@ -53,3 +53,57 @@ silently accepting it, and they exist because no endpoint on
 `UserDefaultsClient` throws, so reporting the refusal through an error is
 not available. Dropping them to widen a range that only affects contributors
 would trade real protection for nothing an adopter can observe.
+
+## Where a Swift example is checked, and where it is not
+
+Every `swift` fence in this repository is compiled by
+`Scripts/check-documentation-examples.swift`, and CI runs it on every pull
+request. A fence that stops compiling fails the build, which is the whole reason
+the script exists: issues #27 and #30 were both published examples that had
+quietly stopped working, and a person found each of them rather than a gate did.
+
+Three places are read:
+
+- `README.md`.
+- Every `.md` file under `Sources/FoundationDependencies/Documentation.docc`.
+- The `///` doc comments in every `.swift` file under `Sources`.
+
+Three places are **not**, so an example written in one of them is unchecked.
+This is the whole list, and it is deliberately short:
+
+- **`Tests/`.** A doc comment there is a note to a contributor. It is not
+  published, it reaches neither the DocC output nor Quick Help, and the file
+  around it is compiled by `swift test` anyway.
+- **Ordinary `//` comments, anywhere.** An implementation note is not a claim
+  the package publishes.
+- **Markdown other than the two entries above, including this page.** The
+  fences here are `text` and `bash`, which is what keeps that true.
+
+Writing an example in one of those places is not forbidden. Reading a green CI
+run as though it vouched for one is the mistake, and this list exists so that
+the difference is something you can look up rather than something you have to
+notice.
+
+One shape fails rather than going quietly unread: a `swift` fence inside a
+`/** */` doc comment. Every doc comment in this package uses `///`, so the
+script reads that form and reports the other, rather than shipping a
+marker-stripping rule that no fence in the package exercises.
+
+## What a documentation example has to stand on its own
+
+Each fence is compiled by itself, so it has to name everything it uses. There
+are two allowances and no others:
+
+- A fence with no `import` line is read as an excerpt and compiled under a fixed
+  prelude. A fence that imports anything at all is judged on exactly what it
+  imports, which is how the missing `import SwiftUI` in #30 is caught.
+- A type belonging to the reader rather than to this package, `ContentView` or
+  `Settings`, comes from `Scripts/DocumentationExampleStubs.swift`. A name this
+  package is supposed to export does not belong in that file: if a fence cannot
+  resolve one, either the fence or the package is wrong.
+
+Everything else is written out. A doc comment whose example elides the
+`@Dependency(\.userDefaultsClient) var userDefaults` line above it does not
+compile, and de-eliding it is the fix rather than an exemption. That has been
+measured twice here, in #40 and again in #54, and both times the de-elided
+example was also the better one to read.

@@ -12,7 +12,9 @@ import Foundation
 /// Wrap one in a ``UserDefaultsClient`` to register it as a dependency:
 ///
 /// ```swift
-/// $0.userDefaultsClient = UserDefaultsClient(.standard)
+/// prepareDependencies {
+///     $0.userDefaultsClient = UserDefaultsClient(.standard)
+/// }
 /// ```
 ///
 /// There are two ways to create one:

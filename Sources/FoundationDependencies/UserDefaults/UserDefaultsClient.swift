@@ -185,6 +185,8 @@ public struct UserDefaultsClient: Sendable {
     /// literals, so the call site usually looks the way it would have with `Any`:
     ///
     /// ```swift
+    /// @Dependency(\.userDefaultsClient) var userDefaults
+    ///
     /// userDefaults.setPropertyList(["launches": 3, "seen": true], forKey: "state")
     /// ```
     ///
@@ -204,7 +206,9 @@ public struct UserDefaultsClient: Sendable {
     /// Creates a client backed by the app's own defaults or by a named suite.
     ///
     /// ```swift
-    /// $0.userDefaultsClient = UserDefaultsClient(.standard)
+    /// prepareDependencies {
+    ///     $0.userDefaultsClient = UserDefaultsClient(.standard)
+    /// }
     /// ```
     ///
     /// - Parameter store: The live store to route every endpoint through.
