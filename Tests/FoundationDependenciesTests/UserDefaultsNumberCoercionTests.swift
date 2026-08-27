@@ -87,8 +87,8 @@ struct UserDefaultsNumberCoercionTests {
           arguments: StoreKind.allCases, integerFromStringCases)
     func integerReadsAString(kind: StoreKind, row: Coercion<String, Int>) throws {
         try withStore(kind) { store in
-            store.setString(row.written, "key")
-            #expect(store.int("key") == row.expected)
+            store.setString(row.written, forKey: "key")
+            #expect(store.int(forKey: "key") == row.expected)
         }
     }
 
@@ -96,8 +96,8 @@ struct UserDefaultsNumberCoercionTests {
           arguments: StoreKind.allCases, integerFromDoubleCases)
     func integerReadsADouble(kind: StoreKind, row: Coercion<Double, Int>) throws {
         try withStore(kind) { store in
-            store.setDouble(row.written, "key")
-            #expect(store.int("key") == row.expected)
+            store.setDouble(row.written, forKey: "key")
+            #expect(store.int(forKey: "key") == row.expected)
         }
     }
 
@@ -105,8 +105,8 @@ struct UserDefaultsNumberCoercionTests {
           arguments: StoreKind.allCases, [true, false])
     func integerReadsABool(kind: StoreKind, flag: Bool) throws {
         try withStore(kind) { store in
-            store.setBool(flag, "key")
-            #expect(store.int("key") == (flag ? 1 : 0))
+            store.setBool(flag, forKey: "key")
+            #expect(store.int(forKey: "key") == (flag ? 1 : 0))
         }
     }
 
@@ -114,16 +114,16 @@ struct UserDefaultsNumberCoercionTests {
           arguments: StoreKind.allCases, doubleFromStringCases)
     func doubleReadsAString(kind: StoreKind, row: Coercion<String, Double>) throws {
         try withStore(kind) { store in
-            store.setString(row.written, "key")
-            #expect(matches(store.double("key"), row.expected))
+            store.setString(row.written, forKey: "key")
+            #expect(matches(store.double(forKey: "key"), row.expected))
         }
     }
 
     @Test("double reads a stored integer", arguments: StoreKind.allCases, [0, 42, -7])
     func doubleReadsAnInt(kind: StoreKind, value: Int) throws {
         try withStore(kind) { store in
-            store.setInt(value, "key")
-            #expect(store.double("key") == Double(value))
+            store.setInt(value, forKey: "key")
+            #expect(store.double(forKey: "key") == Double(value))
         }
     }
 
@@ -131,8 +131,8 @@ struct UserDefaultsNumberCoercionTests {
           arguments: StoreKind.allCases, [true, false])
     func doubleReadsABool(kind: StoreKind, flag: Bool) throws {
         try withStore(kind) { store in
-            store.setBool(flag, "key")
-            #expect(store.double("key") == (flag ? 1 : 0))
+            store.setBool(flag, forKey: "key")
+            #expect(store.double(forKey: "key") == (flag ? 1 : 0))
         }
     }
 
@@ -144,18 +144,18 @@ struct UserDefaultsNumberCoercionTests {
         try withStore(kind) { store in
             seeded.write(into: store, key: "key")
 
-            #expect(store.int("key") == 0)
-            #expect(store.double("key") == 0)
+            #expect(store.int(forKey: "key") == 0)
+            #expect(store.double(forKey: "key") == 0)
         }
     }
 
     @Test("Stored data reads as zero", arguments: StoreKind.allCases)
     func dataReadsAsZero(kind: StoreKind) throws {
         try withStore(kind) { store in
-            store.setObject(Data([1, 2, 3]), "key")
+            store.setObject(Data([1, 2, 3]), forKey: "key")
 
-            #expect(store.int("key") == 0)
-            #expect(store.double("key") == 0)
+            #expect(store.int(forKey: "key") == 0)
+            #expect(store.double(forKey: "key") == 0)
         }
     }
 }

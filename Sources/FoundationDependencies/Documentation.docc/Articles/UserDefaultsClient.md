@@ -7,25 +7,27 @@ Use this dependency to access `UserDefaults` in a safe, testable way within Swif
 ```swift
 @Dependency(\.userDefaultsClient) var userDefaults
 
-userDefaults.setString("Hello", "welcomeKey")
-let value = userDefaults.string("welcomeKey") ?? "Default"
+userDefaults.setString("Hello", forKey: "welcomeKey")
+let value = userDefaults.string(forKey: "welcomeKey") ?? "Default"
 ```
 
-The `UserDefaultsClient` provides typed access to user defaults using dependency injection, allowing your app to remain testable and concurrency-safe.
+`UserDefaultsClient` provides typed access to user defaults using dependency injection, allowing your app to remain testable and concurrency-safe.
 
-Until your app registers a live store, that code resolves to `UserDefaultsTestStore` and nothing it writes is persisted. Registering one is the first thing to do.
+It is the whole interface: a struct of closures, one per operation, with a method for each carrying argument labels. There is no protocol to conform to. Call the methods, and replace the closures when a test needs different behaviour.
+
+Until your app registers a live store, that code resolves to an in-memory store and nothing it writes is persisted. Registering one is the first thing to do.
 
 ## Where You Can Call It From
 
-Anywhere. Every endpoint is a nonisolated `@Sendable` closure and none of them is `async`, so a read returns its value in whichever domain asked for it: a background task, a widget extension reaching a shared app group suite, or the main actor. Nothing hops, and a store can be handed across a domain boundary because `UserDefaultsStoreProtocol` requires `Sendable`.
+Anywhere. Every endpoint is a nonisolated `@Sendable` closure and none of them is `async`, so a read returns its value in whichever domain asked for it: a background task, a widget extension reaching a shared app group suite, or the main actor. Nothing hops, and a client can be handed across a domain boundary because `UserDefaultsClient` is `Sendable`.
 
-Each store says for itself how it stays safe under that. `UserDefaultsLiveStore` holds one `UserDefaults` instance, which Apple documents as thread-safe, and `UserDefaultsTestStore` keeps its dictionary behind a lock. A `UserDefaultsClient` you build yourself inherits neither guarantee: nothing serialises the closures you supply, so anything mutable they capture needs a lock of its own. See <doc:FileSystemClient> for that shape written out.
+Each store says for itself how it stays safe under that. `UserDefaultsLiveStore` holds one `UserDefaults` instance, which Apple documents as thread-safe, and `UserDefaultsTestStore` keeps its dictionary behind a lock. A client you assemble from closures of your own inherits neither guarantee: nothing serialises the closures you supply, so anything mutable they capture needs a lock of its own. See <doc:FileSystemClient> for that shape written out.
 
 ## Registering a Live Store
 
-`UserDefaultsKey` conforms to `TestDependencyKey` only. That is deliberate: which defaults a store should read is app-specific, so the package cannot choose for you and still build in isolation. Nothing else in this package needs the step, so it is easy to miss.
+`UserDefaultsClient` conforms to `TestDependencyKey` only. That is deliberate: which defaults a store should read is app-specific, so the package cannot choose for you and still build in isolation. Nothing else in this package needs the step, so it is easy to miss.
 
-Register a store once, as early in the app lifecycle as you can.
+Register a client once, as early in the app lifecycle as you can.
 
 ### The App's Own Defaults
 
@@ -41,7 +43,7 @@ struct MyApp: App {
 
     init() {
         prepareDependencies {
-            $0.userDefaultsClient = UserDefaultsLiveStore.standard
+            $0.userDefaultsClient = UserDefaultsClient(.standard)
         }
     }
 
@@ -71,7 +73,7 @@ struct MyApp: App {
         }
 
         prepareDependencies {
-            $0.userDefaultsClient = store
+            $0.userDefaultsClient = UserDefaultsClient(store)
         }
     }
 
@@ -95,12 +97,12 @@ A name Foundation accepts is not necessarily the container you meant. A mistyped
 
 ### Conforming the Key Instead
 
-Conforming the key in your own module also works:
+`UserDefaultsClient` is its own dependency key, so conforming it in your own module also works:
 
 ```swift
-extension UserDefaultsKey: @retroactive DependencyKey {
+extension UserDefaultsClient: @retroactive DependencyKey {
 
-    public static let liveValue: any UserDefaultsStoreProtocol = UserDefaultsLiveStore.standard
+    public static let liveValue = UserDefaultsClient(.standard)
 }
 ```
 
@@ -108,9 +110,9 @@ Prefer `prepareDependencies`. A stored property has nowhere sensible to handle a
 
 ## Testing
 
-The default value for this dependency is already `UserDefaultsTestStore`, an in-memory store that touches no real suite, so nothing has to be registered before a test can run.
+The default value for this dependency is a client over `UserDefaultsTestStore`, an in-memory store that touches no real suite, so nothing has to be registered before a test can run.
 
-Each test gets its own. `UserDefaultsKey.testValue` is computed rather than stored, and `swift-dependencies` caches what it resolves against the running test, so two tests leaning on the default hold two different stores while repeated resolutions inside one test hold the same one. A value written by one test is not there for the next one to read.
+Each test gets its own. `UserDefaultsClient.testValue` is computed rather than stored, and `swift-dependencies` caches what it resolves against the running test, so two tests leaning on the default hold two different stores while repeated resolutions inside one test hold the same one. A value written by one test is not there for the next one to read.
 
 Two places that isolation does not reach:
 
@@ -121,10 +123,10 @@ Inject your own store whenever a test needs seeded values, and whenever either o
 
 ```swift
 let store = UserDefaultsTestStore()
-store.setBool(true, "hasSeenOnboarding")
+store.setBool(true, forKey: "hasSeenOnboarding")
 
 withDependencies {
-    $0.userDefaultsClient = store
+    $0.userDefaultsClient = UserDefaultsClient(store)
 } operation: {
     MyService()
 }
@@ -138,10 +140,36 @@ The test store is not a plain dictionary wrapper. `UserDefaults` coerces between
 
 Writes are validated the same way. `UserDefaults` raises `NSInvalidArgumentException` when asked to store anything that is not a property list value, so `setObject` traps on the same input rather than accepting it. Note this rejects `URL`, which production also rejects through this endpoint.
 
-One divergence is worth knowing. `object` returns the value as it was written, whereas live `UserDefaults` returns the Foundation counterpart it normalised the value into. A value stored through `setInt` reads back from `object` as an `Int` here and as an `NSNumber` in production, so `object(key) as? Bool` finds a `Bool` in production for a stored `1` and finds nothing here. The typed readers are unaffected and are the endpoints a test should prefer.
+One divergence is worth knowing. `object` returns the value as it was written, whereas live `UserDefaults` returns the Foundation counterpart it normalised the value into. A value stored through `setInt` reads back from `object` as an `Int` here and as an `NSNumber` in production, so `object(forKey:) as? Bool` finds a `Bool` in production for a stored `1` and finds nothing here. The typed readers are unaffected and are the endpoints a test should prefer.
 
 ### Stubbing Individual Endpoints
 
-There is no shorthand for replacing a single endpoint. `UserDefaultsStoreProtocol` exposes its operations as read-only properties, so an existing store cannot have one of them swapped out, and building a `UserDefaultsClient` means supplying all fifteen closures.
+Every endpoint is a `var`, so a single one can be replaced without restating the other fourteen:
 
-Prefer `UserDefaultsTestStore` and seed it with the values the test needs. Reach for a hand-built `UserDefaultsClient` only when a test needs behaviour a real store cannot produce, such as recording which keys were written.
+```swift
+withDependencies {
+    $0.userDefaultsClient = UserDefaultsClient(UserDefaultsTestStore())
+    $0.userDefaultsClient.bool = { _ in true }
+} operation: {
+    MyService()
+}
+```
+
+Assign to the closure, and call the method. The two are the same endpoint; the method exists so that call sites read `setBool(true, forKey: "key")` rather than `setBool(true, "key")`.
+
+Seeding a `UserDefaultsTestStore` is still the better move when the test only needs values in place. Reach for a replaced endpoint when a test needs behaviour a real store cannot produce, such as recording which keys were written, or a read that fails.
+
+### The Unimplemented Client
+
+`UserDefaultsClient()` builds a client whose every endpoint reports a test failure when it is called:
+
+```swift
+withDependencies {
+    $0.userDefaultsClient = UserDefaultsClient()
+    $0.userDefaultsClient.bool = { _ in true }
+} operation: {
+    MyService()
+}
+```
+
+That test now fails if the code under test touches any endpoint other than `bool`, which is what to reach for when the point of the test is which storage calls are made. It is the opposite default from `testValue`, which is a working store precisely so that a test using storage incidentally does not have to say so.

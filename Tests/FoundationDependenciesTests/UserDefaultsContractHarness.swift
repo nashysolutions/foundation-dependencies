@@ -9,9 +9,10 @@ import Foundation
 import Testing
 import FoundationDependencies
 
-/// Which implementation of `UserDefaultsStoreProtocol` a contract case runs against.
+/// Which store a contract case runs the client against.
 ///
-/// Every assertion in this target is written once and run against both conformers.
+/// Every assertion in this target is written once and run against a
+/// ``UserDefaultsClient`` built over each of the two stores this package ships.
 /// That is what makes the test double's fidelity a checked fact rather than a claim
 /// in a doc comment: a divergence fails on the day it appears, instead of on the day
 /// a consumer's passing test turns out to have been passing against behaviour
@@ -74,18 +75,18 @@ private var liveCasesInScratchSuite = 0
 @MainActor
 func withStore(
     _ kind: StoreKind,
-    _ body: (any UserDefaultsStoreProtocol) throws -> Void
+    _ body: (UserDefaultsClient) throws -> Void
 ) throws {
     switch kind {
     case .testDouble:
-        try body(UserDefaultsTestStore())
+        try body(UserDefaultsClient(UserDefaultsTestStore()))
     case .live:
         try withScratchSuite { suiteName in
             let store = try #require(
                 UserDefaultsLiveStore(suiteName: suiteName),
                 "Foundation refused the scratch suite name \(suiteName)"
             )
-            try body(store)
+            try body(UserDefaultsClient(store))
         }
     }
 }
@@ -134,15 +135,15 @@ private func emptyScratchSuite() {
 /// than at this function.
 @MainActor
 func expectAbsent(
-    _ store: any UserDefaultsStoreProtocol,
+    _ store: UserDefaultsClient,
     key: String,
     sourceLocation: SourceLocation = #_sourceLocation
 ) {
-    #expect(store.bool(key) == false, sourceLocation: sourceLocation)
-    #expect(store.int(key) == 0, sourceLocation: sourceLocation)
-    #expect(store.double(key) == 0, sourceLocation: sourceLocation)
-    #expect(store.string(key) == nil, sourceLocation: sourceLocation)
-    #expect(store.stringArray(key) == nil, sourceLocation: sourceLocation)
-    #expect(store.date(key) == nil, sourceLocation: sourceLocation)
-    #expect(store.object(key) == nil, sourceLocation: sourceLocation)
+    #expect(store.bool(forKey: key) == false, sourceLocation: sourceLocation)
+    #expect(store.int(forKey: key) == 0, sourceLocation: sourceLocation)
+    #expect(store.double(forKey: key) == 0, sourceLocation: sourceLocation)
+    #expect(store.string(forKey: key) == nil, sourceLocation: sourceLocation)
+    #expect(store.stringArray(forKey: key) == nil, sourceLocation: sourceLocation)
+    #expect(store.date(forKey: key) == nil, sourceLocation: sourceLocation)
+    #expect(store.object(forKey: key) == nil, sourceLocation: sourceLocation)
 }

@@ -94,22 +94,22 @@ enum SeededValue: String, CaseIterable, Sendable, CustomTestStringConvertible {
 
     /// Writes this endpoint's sample value under `key`.
     @MainActor
-    func write(into store: any UserDefaultsStoreProtocol, key: String) {
+    func write(into store: UserDefaultsClient, key: String) {
         switch self {
         case .bool:
-            store.setBool(true, key)
+            store.setBool(true, forKey: key)
         case .int:
-            store.setInt(42, key)
+            store.setInt(42, forKey: key)
         case .double:
-            store.setDouble(3.5, key)
+            store.setDouble(3.5, forKey: key)
         case .string:
-            store.setString("abc", key)
+            store.setString("abc", forKey: key)
         case .stringArray:
-            store.setStringArray(["a", "b"], key)
+            store.setStringArray(["a", "b"], forKey: key)
         case .date:
-            store.setDate(sampleDate, key)
+            store.setDate(sampleDate, forKey: key)
         case .object:
-            store.setObject("abc", key)
+            store.setObject("abc", forKey: key)
         }
     }
 }
@@ -131,31 +131,31 @@ enum NilCapableSetter: String, CaseIterable, Sendable, CustomTestStringConvertib
 
     /// Writes a non-nil value, so there is something for the `nil` write to remove.
     @MainActor
-    func seed(_ store: any UserDefaultsStoreProtocol, key: String) {
+    func seed(_ store: UserDefaultsClient, key: String) {
         switch self {
         case .string:
-            store.setString("abc", key)
+            store.setString("abc", forKey: key)
         case .stringArray:
-            store.setStringArray(["a", "b"], key)
+            store.setStringArray(["a", "b"], forKey: key)
         case .date:
-            store.setDate(sampleDate, key)
+            store.setDate(sampleDate, forKey: key)
         case .object:
-            store.setObject("abc", key)
+            store.setObject("abc", forKey: key)
         }
     }
 
     /// Writes `nil` through the same setter that seeded the key.
     @MainActor
-    func writeNil(_ store: any UserDefaultsStoreProtocol, key: String) {
+    func writeNil(_ store: UserDefaultsClient, key: String) {
         switch self {
         case .string:
-            store.setString(nil, key)
+            store.setString(nil, forKey: key)
         case .stringArray:
-            store.setStringArray(nil, key)
+            store.setStringArray(nil, forKey: key)
         case .date:
-            store.setDate(nil, key)
+            store.setDate(nil, forKey: key)
         case .object:
-            store.setObject(nil, key)
+            store.setObject(nil, forKey: key)
         }
     }
 }

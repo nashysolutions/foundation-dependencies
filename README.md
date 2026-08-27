@@ -30,7 +30,7 @@ Comprehensive documentation is available via Swift Package Index:
 | Client                     | Description |
 |---------------------------|-------------|
 | `mainBundleClient`        | A wrapper around `Bundle`, exposing APIs for loading resources via a `BundleResourceProvider` abstraction. |
-| `userDefaultsClient`      | A testable interface for `UserDefaults`, built using `UserDefaultsStoreProtocol`. Ideal for dependency injection and isolating persistent state in tests. **Your app must register a live store at launch (see below).** |
+| `userDefaultsClient`      | A testable interface for `UserDefaults`, built as a struct of closures with a method per endpoint. Ideal for dependency injection and isolating persistent state in tests. **Your app must register a live store at launch (see below).** |
 | `fileSystemClient`        | A robust file system interface supporting operations such as reading, writing, copying, moving, and deleting files or directories. Suitable for sandboxed storage and fully mockable for tests. |
 | `fileSystemResourceClient`| A factory for creating typed file stores that conform to `FileSystemOperations`. Supports saving and loading `Codable` values and binary data into specific folders and subfolders, without exposing raw file system APIs. |
 | `loggerClient` | An interface to os.Logger, auto-populated with the MainBundle bundle identifier (even if you're logging outside the main bundle). |
@@ -43,7 +43,7 @@ Comprehensive documentation is available via Swift Package Index:
 
 ## ⚙️ Registering the Live User Defaults Store
 
-`userDefaultsClient` is the one client that does nothing useful until your app registers a live store. `UserDefaultsKey` conforms to `TestDependencyKey` only, and that is deliberate: the suite name is app-specific, so the package cannot supply a live value and still build in isolation.
+`userDefaultsClient` is the one client that does nothing useful until your app registers a live store. `UserDefaultsClient` conforms to `TestDependencyKey` only, and that is deliberate: the suite name is app-specific, so the package cannot supply a live value and still build in isolation.
 
 Register the store once, as early in the app lifecycle as you can:
 
@@ -61,7 +61,7 @@ struct MyApp: App {
         }
 
         prepareDependencies {
-            $0.userDefaultsClient = store
+            $0.userDefaultsClient = UserDefaultsClient(store)
         }
     }
 
@@ -77,7 +77,7 @@ This is the recommended route. It requires no conformance of your own, and it is
 
 ### What Happens If You Skip It
 
-When a live context asks for a key that has no `DependencyKey` conformance, `swift-dependencies` falls back to that key's `testValue`. Here that fallback is `UserDefaultsTestStore`, which is an in-memory dictionary. Reads and writes still appear to succeed, so nothing looks broken, but nothing is persisted and everything is gone at the next launch.
+When a live context asks for a key that has no `DependencyKey` conformance, `swift-dependencies` falls back to that key's `testValue`. Here that fallback is a client over `UserDefaultsTestStore`, which is an in-memory dictionary. Reads and writes still appear to succeed, so nothing looks broken, but nothing is persisted and everything is gone at the next launch.
 
 A debug build reports the missing registration as a runtime warning. In a release build that report is compiled out, so the fallback is completely silent and the only symptom is that your users lose their data.
 
@@ -87,19 +87,19 @@ An app group identifier such as `group.com.example.myapp` is the intended form, 
 
 Do not pass your app's own bundle identifier or `NSGlobalDomain`. Foundation refuses both, so `UserDefaultsLiveStore(suiteName:)` returns `nil` and no store is produced at all. That is why the example above handles the optional rather than assigning it straight through, and why it fails loudly when it is `nil`. A suite name is a compile-time constant, so a `nil` result is a mistake in the name itself and will be `nil` on every launch on every device. Substituting a fallback store would hide it and move the symptom to wherever the values are later read.
 
-No supported suite name reaches the app's own defaults. When the values are not shared with another process, register `UserDefaultsLiveStore.standard` instead, which reads and writes those domains and is not failable.
+No supported suite name reaches the app's own defaults. When the values are not shared with another process, register `UserDefaultsClient(.standard)` instead, which reads and writes those domains and is not failable.
 
 ### Registering via `DependencyKey`
 
-Conforming the key in your own module also works:
+`UserDefaultsClient` is its own dependency key, so conforming it in your own module also works:
 
 ```swift
 import Dependencies
 import FoundationDependencies
 
-extension UserDefaultsKey: @retroactive DependencyKey {
+extension UserDefaultsClient: @retroactive DependencyKey {
 
-    public static let liveValue: any UserDefaultsStoreProtocol = UserDefaultsLiveStore.standard
+    public static let liveValue = UserDefaultsClient(.standard)
 }
 ```
 

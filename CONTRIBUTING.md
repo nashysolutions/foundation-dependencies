@@ -50,6 +50,6 @@ this section wrong, so treat it as a reason to keep such APIs in `Tests/`.
 The split also rules out one tempting fix. The exit tests are the only coverage
 proving that both stores really do trap on a non-property-list value rather than
 silently accepting it, and they exist because no endpoint on
-`UserDefaultsStoreProtocol` throws, so reporting the refusal through an error is
+`UserDefaultsClient` throws, so reporting the refusal through an error is
 not available. Dropping them to widen a range that only affects contributors
 would trade real protection for nothing an adopter can observe.

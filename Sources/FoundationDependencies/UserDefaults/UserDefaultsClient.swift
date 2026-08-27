@@ -7,129 +7,199 @@
 
 import Foundation
 import Dependencies
+import DependenciesMacros
+import IssueReporting
 
-/// A concrete implementation of `UserDefaultsStoreProtocol` backed by user-supplied closures.
+/// A type-safe interface to a `UserDefaults`-like key-value store.
 ///
-/// `UserDefaultsClient` allows you to inject a custom implementation of user defaults
-/// functionality—useful for testing, mocking, or adapting to different storage systems.
+/// This is the whole published surface. There is no protocol to conform to and no
+/// second type to build: a store is a value of this type, and the two implementations
+/// this package ships are reached through ``init(_:)``.
 ///
-/// Every operation is a nonisolated `@Sendable` closure, so a client may be resolved
-/// and called from any concurrency domain. Nothing here serialises those calls, so
-/// whatever the closures you supply capture has to be safe to touch from more than
-/// one at a time. Capturing nothing mutable is the easy way; holding the mutable
-/// state behind a lock, as ``UserDefaultsTestStore`` does, is the other.
+/// ```swift
+/// @Dependency(\.userDefaultsClient) var userDefaults
 ///
-/// This type is `Sendable` and can be used as a dependency in Swift Concurrency environments.
-public struct UserDefaultsClient: UserDefaultsStoreProtocol {
+/// userDefaults.setBool(true, forKey: "hasOnboarded")
+/// let hasOnboarded = userDefaults.bool(forKey: "hasOnboarded")
+/// ```
+///
+/// ## Endpoints and their method equivalents
+///
+/// Each endpoint is stored as a closure, so any one of them can be replaced on its
+/// own, and each has a generated method with argument labels. Prefer the method when
+/// calling, and assign to the closure when overriding:
+///
+/// ```swift
+/// withDependencies {
+///     $0.userDefaultsClient.bool = { _ in true }
+/// } operation: {
+///     // Everything else still behaves as the store underneath it does.
+/// }
+/// ```
+///
+/// ## The unimplemented client
+///
+/// `UserDefaultsClient()` builds a client whose every endpoint reports a test failure
+/// when it is called. Reach for it when a test should fail if the code under test
+/// touches an endpoint the test did not think about.
+///
+/// This is not what ``testValue`` is, and the difference is deliberate. See the note
+/// there.
+///
+/// ``bool``, ``int`` and ``double`` are the three endpoints that report through a
+/// written-out default rather than the one `@DependencyClient` generates, and the
+/// duplication is load-bearing rather than untidy. The macro refuses to generate a
+/// default for a non-throwing endpoint returning a non-optional, because it has
+/// nothing to return after reporting, so those three have to carry one in source. An
+/// endpoint that carries its own default supersedes the macro's: the default
+/// initialises the private storage the macro generates, so whatever is written here
+/// is what an unimplemented client runs, and the macro's reporting version is never
+/// reached.
+///
+/// That was measured, not assumed. Written as `= { _ in false }` the three read as
+/// unimplemented and report nothing, so a test touching one of them silently gets a
+/// plausible `false` while the other twelve fail loudly. `UserDefaultsClientOverrideTests`
+/// asserts a report from one of the three and one of the twelve, so a later edit that
+/// drops a `reportIssue` from here fails rather than quietly reopening the hole.
+///
+/// ## Concurrency
+///
+/// Every endpoint is a nonisolated `@Sendable` closure, so a client may be resolved
+/// and called from any concurrency domain: a background task, a widget extension
+/// reading an app group suite, or the main actor. No endpoint hops, and none of them
+/// is `async`, so a read returns its value in the caller's own domain.
+///
+/// Nothing here serialises those calls. A client built over one of this package's
+/// stores inherits that store's own guarantee, stated at its declaration; a client
+/// assembled from closures of your own inherits nothing, so whatever those closures
+/// capture has to be safe to touch from more than one at a time.
+@DependencyClient
+public struct UserDefaultsClient: Sendable {
 
-    // MARK: - Stored Closures
+    // MARK: - Reading Values
 
-    /// Retrieves a Boolean value for a given key.
-    public var bool: @Sendable (String) -> Bool
+    /// Retrieves a Boolean value for the specified key, or `false` if there is none.
+    public var bool: @Sendable (_ forKey: String) -> Bool = { _ in
+        reportIssue("Unimplemented: '\(Self.self).bool'")
+        return false
+    }
 
-    /// Retrieves an integer value for a given key.
-    public var int: @Sendable (String) -> Int
+    /// Retrieves an integer value for the specified key, or `0` if there is none.
+    public var int: @Sendable (_ forKey: String) -> Int = { _ in
+        reportIssue("Unimplemented: '\(Self.self).int'")
+        return 0
+    }
 
-    /// Retrieves a double value for a given key.
-    public var double: @Sendable (String) -> Double
+    /// Retrieves a double value for the specified key, or `0` if there is none.
+    public var double: @Sendable (_ forKey: String) -> Double = { _ in
+        reportIssue("Unimplemented: '\(Self.self).double'")
+        return 0
+    }
 
-    /// Retrieves a string value for a given key.
-    public var string: @Sendable (String) -> String?
+    /// Retrieves a string value for the specified key, or `nil` if there is none.
+    public var string: @Sendable (_ forKey: String) -> String?
 
-    /// Retrieves an array of strings for a given key.
-    public var stringArray: @Sendable (String) -> [String]?
+    /// Retrieves an array of strings for the specified key, or `nil` if there is none.
+    public var stringArray: @Sendable (_ forKey: String) -> [String]?
 
-    /// Retrieves a raw object for a given key.
-    public var object: @Sendable (String) -> Any?
+    /// Retrieves a raw object for the specified key, or `nil` if there is none.
+    public var object: @Sendable (_ forKey: String) -> Any?
 
-    /// Retrieves a `Date` value for a given key.
-    public var date: @Sendable (String) -> Date?
+    /// Retrieves a `Date` value for the specified key, or `nil` if there is none.
+    public var date: @Sendable (_ forKey: String) -> Date?
 
-    /// Removes the value associated with the given key.
-    public var removeObject: @Sendable (String) -> Void
+    // MARK: - Writing Values
 
-    /// Stores a Boolean value for a given key.
-    public var setBool: @Sendable (Bool, String) -> Void
+    /// Stores a Boolean value for the specified key.
+    public var setBool: @Sendable (Bool, _ forKey: String) -> Void
 
-    /// Stores an integer value for a given key.
-    public var setInt: @Sendable (Int, String) -> Void
+    /// Stores an integer value for the specified key.
+    public var setInt: @Sendable (Int, _ forKey: String) -> Void
 
-    /// Stores a double value for a given key.
-    public var setDouble: @Sendable (Double, String) -> Void
+    /// Stores a double value for the specified key.
+    public var setDouble: @Sendable (Double, _ forKey: String) -> Void
 
-    /// Stores a string value for a given key.
-    public var setString: @Sendable (String?, String) -> Void
+    /// Stores a string value for the specified key, or removes it when `nil`.
+    public var setString: @Sendable (String?, _ forKey: String) -> Void
 
-    /// Stores an array of strings for a given key.
-    public var setStringArray: @Sendable ([String]?, String) -> Void
+    /// Stores an array of strings for the specified key, or removes it when `nil`.
+    public var setStringArray: @Sendable ([String]?, _ forKey: String) -> Void
 
-    /// Stores a raw object for a given key.
-    public var setObject: @Sendable (Any?, String) -> Void
+    /// Stores a raw object for the specified key, or removes it when `nil`.
+    public var setObject: @Sendable (Any?, _ forKey: String) -> Void
 
-    /// Stores a `Date` value for a given key.
-    public var setDate: @Sendable (Date?, String) -> Void
+    /// Stores a `Date` value for the specified key, or removes it when `nil`.
+    public var setDate: @Sendable (Date?, _ forKey: String) -> Void
 
-    // MARK: - Initialiser
+    // MARK: - Deletion
 
-    /// Creates a new `UserDefaultsClient` using the provided closures for each operation.
+    /// Removes the value associated with the specified key.
+    public var removeObject: @Sendable (_ forKey: String) -> Void
+
+    // MARK: - Building One Over a Store
+
+    /// Creates a client backed by the app's own defaults or by a named suite.
     ///
-    /// - Parameters:
-    ///   - bool: Closure to retrieve a `Bool` for a given key.
-    ///   - int: Closure to retrieve an `Int` for a given key.
-    ///   - double: Closure to retrieve a `Double` for a given key.
-    ///   - string: Closure to retrieve a `String?` for a given key.
-    ///   - stringArray: Closure to retrieve a `[String]?` for a given key.
-    ///   - object: Closure to retrieve an `Any?` for a given key.
-    ///   - date: Closure to retrieve a `Date?` for a given key.
-    ///   - removeObject: Closure to remove a value for a given key.
-    ///   - setBool: Closure to store a `Bool` for a given key.
-    ///   - setInt: Closure to store an `Int` for a given key.
-    ///   - setDouble: Closure to store a `Double` for a given key.
-    ///   - setString: Closure to store a `String?` for a given key.
-    ///   - setStringArray: Closure to store a `[String]?` for a given key.
-    ///   - setObject: Closure to store an `Any?` for a given key.
-    ///   - setDate: Closure to store a `Date?` for a given key.
-    public init(
-        bool: @Sendable @escaping (String) -> Bool,
-        int: @Sendable @escaping (String) -> Int,
-        double: @Sendable @escaping (String) -> Double,
-        string: @Sendable @escaping (String) -> String?,
-        stringArray: @Sendable @escaping (String) -> [String]?,
-        object: @Sendable @escaping (String) -> Any?,
-        date: @Sendable @escaping (String) -> Date?,
-        removeObject: @Sendable @escaping (String) -> Void,
-        setBool: @Sendable @escaping (Bool, String) -> Void,
-        setInt: @Sendable @escaping (Int, String) -> Void,
-        setDouble: @Sendable @escaping (Double, String) -> Void,
-        setString: @Sendable @escaping (String?, String) -> Void,
-        setStringArray: @Sendable @escaping ([String]?, String) -> Void,
-        setObject: @Sendable @escaping (Any?, String) -> Void,
-        setDate: @Sendable @escaping (Date?, String) -> Void
-    ) {
-        self.bool = bool
-        self.int = int
-        self.double = double
-        self.string = string
-        self.stringArray = stringArray
-        self.object = object
-        self.date = date
-        self.removeObject = removeObject
-        self.setBool = setBool
-        self.setInt = setInt
-        self.setDouble = setDouble
-        self.setString = setString
-        self.setStringArray = setStringArray
-        self.setObject = setObject
-        self.setDate = setDate
+    /// ```swift
+    /// $0.userDefaultsClient = UserDefaultsClient(.standard)
+    /// ```
+    ///
+    /// - Parameter store: The live store to route every endpoint through.
+    public init(_ store: UserDefaultsLiveStore) {
+        self.init(routingThrough: store)
+    }
+
+    /// Creates a client backed by an in-memory store, for tests and previews.
+    ///
+    /// - Parameter store: The test store to route every endpoint through. Hold on to
+    ///                    it if the test needs to seed or inspect it; the client keeps
+    ///                    it alive either way.
+    public init(_ store: UserDefaultsTestStore) {
+        self.init(routingThrough: store)
+    }
+
+    /// Routes every endpoint through `store`.
+    ///
+    /// The two public initialisers above are thin wrappers over this one so that the
+    /// fifteen-line mapping is written once. It is generic rather than taking the
+    /// protocol existentially because ``UserDefaultsStore`` is internal, and a public
+    /// initialiser cannot name it.
+    private init<Store: UserDefaultsStore>(routingThrough store: Store) {
+        self.init(
+            bool: { store.bool(forKey: $0) },
+            int: { store.int(forKey: $0) },
+            double: { store.double(forKey: $0) },
+            string: { store.string(forKey: $0) },
+            stringArray: { store.stringArray(forKey: $0) },
+            object: { store.object(forKey: $0) },
+            date: { store.date(forKey: $0) },
+            setBool: { store.setBool($0, forKey: $1) },
+            setInt: { store.setInt($0, forKey: $1) },
+            setDouble: { store.setDouble($0, forKey: $1) },
+            setString: { store.setString($0, forKey: $1) },
+            setStringArray: { store.setStringArray($0, forKey: $1) },
+            setObject: { store.setObject($0, forKey: $1) },
+            setDate: { store.setDate($0, forKey: $1) },
+            removeObject: { store.removeObject(forKey: $0) }
+        )
     }
 }
 
-/// A test dependency key for injecting a stubbed user defaults client in unit tests.
-public enum UserDefaultsKey: TestDependencyKey {
+// MARK: - Dependency Registration
 
-    /// A test implementation of `UserDefaultsStoreProtocol` using in-memory storage.
+extension UserDefaultsClient: TestDependencyKey {
+
+    /// The client a caller gets when it has installed none of its own.
     ///
-    /// Computed rather than stored, and it has to stay that way. `UserDefaultsTestStore`
+    /// A working in-memory store rather than the unimplemented client
+    /// `UserDefaultsClient()` produces, which is the opposite of what this package's
+    /// other clients do and is deliberate. Storage is the kind of dependency a test
+    /// uses incidentally, as when code under test writes a flag and reads it back three
+    /// lines later, and a default that failed on the first touch would make every such
+    /// test register a store before it could say anything. `UserDefaultsClient()` is still
+    /// there for the tests that do want that, and is one assignment away.
+    ///
+    /// Computed rather than stored, and it has to stay that way. ``UserDefaultsTestStore``
     /// is a class holding a dictionary, so a stored property would be one store for the
     /// whole process: every test that installs no store of its own would resolve that
     /// same instance, and a value written by one test would still be sitting there for
@@ -146,20 +216,20 @@ public enum UserDefaultsKey: TestDependencyKey {
     /// `UserDefaultsDefaultStoreIsolationTests` holds both. It fails in the first
     /// direction if this goes back to being a stored property, and in the second if a
     /// later change hands out a store per resolution rather than per test.
-    public static var testValue: any UserDefaultsStoreProtocol {
-        UserDefaultsTestStore()
+    public static var testValue: UserDefaultsClient {
+        UserDefaultsClient(UserDefaultsTestStore())
     }
 }
 
-/// Extension for registering and accessing the `UserDefaultsStoreProtocol` client
-/// in the dependency injection system.
+/// Extension for registering and accessing the user defaults client in the dependency
+/// injection system.
 public extension DependencyValues {
 
     /// The user defaults client available in the current dependency context.
     ///
     /// Use this to access or override the user defaults client for testing.
-    var userDefaultsClient: any UserDefaultsStoreProtocol {
-        get { self[UserDefaultsKey.self] }
-        set { self[UserDefaultsKey.self] = newValue }
+    var userDefaultsClient: UserDefaultsClient {
+        get { self[UserDefaultsClient.self] }
+        set { self[UserDefaultsClient.self] = newValue }
     }
 }

@@ -7,11 +7,23 @@
 
 import Foundation
 
-/// An in-memory implementation of ``UserDefaultsStoreProtocol`` for use in tests.
+/// An in-memory store for use in tests.
 ///
 /// Values live in a dictionary owned by the instance, so a test neither reads nor
 /// writes a real `UserDefaults` suite and nothing survives the process. Create one
-/// per test to get a clean store.
+/// per test to get a clean store, and wrap it in a ``UserDefaultsClient`` to install
+/// it:
+///
+/// ```swift
+/// let store = UserDefaultsTestStore()
+/// store.setBool(true, forKey: "hasOnboarded")
+///
+/// withDependencies {
+///     $0.userDefaultsClient = UserDefaultsClient(store)
+/// } operation: {
+///     // The code under test reads `true` for that key.
+/// }
+/// ```
 ///
 /// ## Fidelity to live `UserDefaults`
 ///
@@ -54,9 +66,10 @@ import Foundation
 /// both hold `lock` for the whole of their access. Every endpoint goes through one
 /// of those two, so no endpoint can read the dictionary while another is writing it.
 ///
-/// The endpoints are nonisolated `@Sendable` closures, matching the rest of this
-/// package, so a store genuinely can be called from two domains at once and the lock
-/// is not ceremony. It replaced an earlier arrangement that made every closure
+/// The endpoints are synchronous and nonisolated, matching the rest of this package,
+/// and ``UserDefaultsClient`` captures a whole store in the `@Sendable` closures it is
+/// made of, so a store genuinely can be called from two domains at once and the lock is
+/// not ceremony. It replaced an earlier arrangement that made every endpoint
 /// `@MainActor` and leaned on that for serialisation, which cost every caller off the
 /// main actor a hop and made the double harder to use than the thing it doubles.
 ///
@@ -64,7 +77,7 @@ import Foundation
 /// Add an endpoint that does and the guarantee is gone, with no compiler diagnostic
 /// pointing back at this conformance; call one of the two accessors instead and there
 /// is nothing to remember.
-public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked Sendable {
+public final class UserDefaultsTestStore: UserDefaultsStore, @unchecked Sendable {
 
     /// The backing store.
     ///
@@ -79,10 +92,10 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
 
     /// Guards ``storage``.
     ///
-    /// `NSLock` rather than an actor because every endpoint on
-    /// ``UserDefaultsStoreProtocol`` is synchronous and returns its value to the
-    /// caller. An actor would make each one `async`, which the protocol does not
-    /// allow, and live `UserDefaults` does not require of a caller either.
+    /// `NSLock` rather than an actor because every endpoint here is synchronous and
+    /// returns its value to the caller. An actor would make each one `async`, which
+    /// ``UserDefaultsClient`` does not allow, and which live `UserDefaults` does not
+    /// require of a caller either.
     private let lock = NSLock()
 
     /// Creates an empty store.
@@ -94,116 +107,85 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
     ///
     /// Coerces the stored value as live `UserDefaults` does. See
     /// `LiveUserDefaultsSemantics.boolean(from:)` for the rules.
-    public var bool: @Sendable (String) -> Bool {
-        { key in
-            LiveUserDefaultsSemantics.boolean(from: self.value(forKey: key))
-        }
+    public func bool(forKey key: String) -> Bool {
+        LiveUserDefaultsSemantics.boolean(from: value(forKey: key))
     }
 
     /// Retrieves an integer value for the specified key.
     ///
     /// Coerces the stored value as live `UserDefaults` does. See
     /// `LiveUserDefaultsSemantics.integer(from:)` for the rules.
-    public var int: @Sendable (String) -> Int {
-        { key in
-            LiveUserDefaultsSemantics.integer(from: self.value(forKey: key))
-        }
+    public func int(forKey key: String) -> Int {
+        LiveUserDefaultsSemantics.integer(from: value(forKey: key))
     }
 
     /// Retrieves a double value for the specified key.
     ///
     /// Coerces the stored value as live `UserDefaults` does. See
     /// `LiveUserDefaultsSemantics.double(from:)` for the rules.
-    public var double: @Sendable (String) -> Double {
-        { key in
-            LiveUserDefaultsSemantics.double(from: self.value(forKey: key))
-        }
+    public func double(forKey key: String) -> Double {
+        LiveUserDefaultsSemantics.double(from: value(forKey: key))
     }
 
     /// Retrieves a string value for the specified key.
     ///
     /// Coerces the stored value as live `UserDefaults` does. See
     /// `LiveUserDefaultsSemantics.string(from:)` for the rules.
-    public var string: @Sendable (String) -> String? {
-        { key in
-            LiveUserDefaultsSemantics.string(from: self.value(forKey: key))
-        }
+    public func string(forKey key: String) -> String? {
+        LiveUserDefaultsSemantics.string(from: value(forKey: key))
     }
 
     /// Retrieves an array of strings for the specified key.
     ///
     /// Coerces the stored value as live `UserDefaults` does. See
     /// `LiveUserDefaultsSemantics.stringArray(from:)` for the rules.
-    public var stringArray: @Sendable (String) -> [String]? {
-        { key in
-            LiveUserDefaultsSemantics.stringArray(from: self.value(forKey: key))
-        }
+    public func stringArray(forKey key: String) -> [String]? {
+        LiveUserDefaultsSemantics.stringArray(from: value(forKey: key))
     }
 
     /// Retrieves the stored value for the specified key, or `nil` if there is none.
     ///
     /// Unlike the typed readers this performs no coercion. See the known divergence
     /// note on the type for how the returned value differs from production.
-    public var object: @Sendable (String) -> Any? {
-        { key in
-            self.value(forKey: key)
-        }
+    public func object(forKey key: String) -> Any? {
+        value(forKey: key)
     }
 
     /// Retrieves a `Date` value for the specified key.
     ///
     /// Returns `nil` when the stored value is anything other than a date. A number
     /// is not interpreted as a time interval, matching production.
-    public var date: @Sendable (String) -> Date? {
-        { key in
-            self.value(forKey: key) as? Date
-        }
-    }
-
-    /// Removes the value associated with the specified key.
-    public var removeObject: @Sendable (String) -> Void {
-        { key in
-            self.write(nil, forKey: key)
-        }
+    public func date(forKey key: String) -> Date? {
+        value(forKey: key) as? Date
     }
 
     // MARK: - Writing Values
 
     /// Stores a Boolean value for the specified key.
-    public var setBool: @Sendable (Bool, String) -> Void {
-        { value, key in
-            self.write(value, forKey: key)
-        }
+    public func setBool(_ value: Bool, forKey key: String) {
+        write(value, forKey: key)
     }
 
     /// Stores an integer value for the specified key.
-    public var setInt: @Sendable (Int, String) -> Void {
-        { value, key in
-            self.write(value, forKey: key)
-        }
+    public func setInt(_ value: Int, forKey key: String) {
+        write(value, forKey: key)
     }
 
     /// Stores a double value for the specified key.
-    public var setDouble: @Sendable (Double, String) -> Void {
-        { value, key in
-            self.write(value, forKey: key)
-        }
+    public func setDouble(_ value: Double, forKey key: String) {
+        write(value, forKey: key)
     }
 
     /// Stores a string value for the specified key, or removes the key when `value`
     /// is `nil`.
-    public var setString: @Sendable (String?, String) -> Void {
-        { value, key in
-            self.write(value, forKey: key)
-        }
+    public func setString(_ value: String?, forKey key: String) {
+        write(value, forKey: key)
     }
 
     /// Stores an array of strings for the specified key, or removes the key when
     /// `value` is `nil`.
-    public var setStringArray: @Sendable ([String]?, String) -> Void {
-        { value, key in
-            self.write(value, forKey: key)
-        }
+    public func setStringArray(_ value: [String]?, forKey key: String) {
+        write(value, forKey: key)
     }
 
     /// Stores a raw value for the specified key, or removes the key when `value` is
@@ -214,29 +196,32 @@ public final class UserDefaultsTestStore: UserDefaultsStoreProtocol, @unchecked 
     ///   let a test pass against behaviour production does not have. Note that this
     ///   rejects `URL`, which production also rejects through this endpoint even
     ///   though its dedicated `set(_:forKey:)` overload for URLs accepts one.
-    public var setObject: @Sendable (Any?, String) -> Void {
-        { value, key in
-            if let value {
-                precondition(
-                    PropertyListSerialization.propertyList(value, isValidFor: .binary),
-                    """
-                    Cannot store a value of type \(type(of: value)) for key '\(key)'. \
-                    UserDefaults accepts only property list values: String, a number, \
-                    Bool, Date, Data, or an Array or Dictionary of those with String \
-                    keys. Live UserDefaults raises NSInvalidArgumentException here.
-                    """
-                )
-            }
-            self.write(value, forKey: key)
+    public func setObject(_ value: Any?, forKey key: String) {
+        if let value {
+            precondition(
+                PropertyListSerialization.propertyList(value, isValidFor: .binary),
+                """
+                Cannot store a value of type \(type(of: value)) for key '\(key)'. \
+                UserDefaults accepts only property list values: String, a number, \
+                Bool, Date, Data, or an Array or Dictionary of those with String \
+                keys. Live UserDefaults raises NSInvalidArgumentException here.
+                """
+            )
         }
+        write(value, forKey: key)
     }
 
     /// Stores a `Date` value for the specified key, or removes the key when `value`
     /// is `nil`.
-    public var setDate: @Sendable (Date?, String) -> Void {
-        { value, key in
-            self.write(value, forKey: key)
-        }
+    public func setDate(_ value: Date?, forKey key: String) {
+        write(value, forKey: key)
+    }
+
+    // MARK: - Deletion
+
+    /// Removes the value associated with the specified key.
+    public func removeObject(forKey key: String) {
+        write(nil, forKey: key)
     }
 
     // MARK: - Storage
