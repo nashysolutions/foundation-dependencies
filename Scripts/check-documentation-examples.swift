@@ -42,6 +42,47 @@
 //  a later toolchain accept it, the flag is the better mechanism and this
 //  parsing should go.
 //
+//  Which language mode, and why it is not the package's own
+//  --------------------------------------------------------
+//  Fences are compiled at `-swift-version 6`. The package itself is
+//  `swift-tools-version: 5.7` and so builds in the Swift 5 language mode, and
+//  the gap is deliberate: this gate is not checking the package, it is
+//  checking what happens to a reader who copies a fence into their own file.
+//  That reader is increasingly in the Swift 6 language mode importing a
+//  Swift 5 library, which is exactly the arrangement compiling here.
+//
+//  Issue #43 is the shape of the damage. At `-swift-version 5` with no
+//  concurrency flag, the fence in `FileSystemResourceClient.md` that captured
+//  a non-`Sendable` `any FileSystemOperations` into the `@Sendable` factory
+//  closure of `FileSystemResourceClient` was completely silent, in both the
+//  file-scope and the wrapped shape. A reader in the Swift 6 language mode
+//  copying it does not get silence; they get an error. On a package whose
+//  whole subject is values held across isolation boundaries, that is close to
+//  the worst thing this gate could fail to say.
+//
+//  Two other directions were measured on the same toolchain before this one
+//  was taken, and the cheapest was not the one expected:
+//
+//  * `-swift-version 5 -strict-concurrency=complete` reddens **ten** fences.
+//    Only one of the ten is the defect above. The other nine are all a single
+//    artefact: `WritableKeyPath<DependencyValues, _>` is reported as
+//    non-`Sendable` at every `@Dependency(\.foo)` site, because the Swift 5
+//    mode lacks SE-0418's inference of `Sendable` for key path literals.
+//    Adding `-enable-upcoming-feature InferSendableFromCaptures` to that
+//    invocation drops it to the same one fence this mode finds, which is what
+//    identifies the nine as a language-mode artefact rather than a finding.
+//    Editing nine articles to work around an inference the reader's compiler
+//    already performs would be the documentation getting worse.
+//
+//  * Compiling every fence twice, once per mode, is the union of the two, so
+//    it inherits all nine of those artefacts and doubles the runtime to find
+//    nothing the single Swift 6 pass does not already find.
+//
+//  If a future toolchain makes the two modes disagree about a real hazard
+//  rather than about key path inference, the two-pass shape becomes worth its
+//  cost. Re-measure before assuming it is; the numbers above are from Swift
+//  6.2.4 and are the reason this is one pass and not two.
+//
 //  How a fence is compiled
 //  -----------------------
 //  Each fence is type-checked on its own, in a compilation unit containing
@@ -722,7 +763,11 @@ func typeCheck(
         "swiftc",
         [
             "-typecheck",
-            "-swift-version", "5",
+            // Swift 6, not the package's own Swift 5. See "Which language
+            // mode" at the top of this file: the reader copying a fence is
+            // the thing being checked, not the package. Lowering this to 5
+            // restores the silence issue #43 recorded.
+            "-swift-version", "6",
             "-target", environment.target,
             "-sdk", environment.sdkPath,
             "-I", environment.modulePath
