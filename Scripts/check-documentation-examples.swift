@@ -36,11 +36,15 @@
 //  `ok` and exited 0.
 //
 //  The verdict is read out of the compiler's output rather than taken from
-//  `-warnings-as-errors`, for one reason: a single group has to be held back
-//  (see `toleratedWarningGroups`), and `-Wwarning no-usage` is rejected as an
-//  unknown warning group by the 6.2 toolchain this package builds with. Should
-//  a later toolchain accept it, the flag is the better mechanism and this
-//  parsing should go.
+//  `-warnings-as-errors`, for one reason: exactly one diagnostic has to be
+//  held back (see `isArtefactOfTheWrapping`), and no compiler flag can
+//  express it. `-Wwarning` takes a warning group, and the group this
+//  diagnostic belongs to is `no-usage`, which is four separate diagnostics
+//  wide — three of which this gate must keep failing on. Issue #42 is that
+//  distinction; the group name is too coarse to be the rule. As a footnote,
+//  `-Wwarning no-usage` is in any case still rejected as an unknown warning
+//  group by the 6.2.4 toolchain this package builds with, so the flag does
+//  not exist even in its too-coarse form.
 //
 //  Which language mode, and why it is not the package's own
 //  --------------------------------------------------------
@@ -659,45 +663,89 @@ struct TypeCheckOutcome {
     var isClean: Bool { status == 0 && warnings.isEmpty }
 }
 
-/// Warning groups reported but never failed on, by the tag `swiftc` prints at
-/// the end of a diagnostic's first line.
+/// Whether a diagnostic is one this script manufactured by wrapping an excerpt,
+/// rather than one a reader would meet in their own file.
 ///
-/// `no-usage` is here because this script manufactures it rather than finding
-/// it. Half the excerpts in these articles end on the line that matters —
+/// Exactly one diagnostic qualifies: an immutable binding that nothing reads.
+/// Half the excerpts in these articles end on the line that matters —
 /// `let url = try bundle.urlForResource("Localisable", "strings")` is showing
 /// the reader what the call hands back — and the binding is unread only
 /// because the function this script wraps the excerpt in has nothing after it.
 /// Failing on that would be demanding the articles consume every value they
 /// demonstrate, which is the documentation getting worse: the same judgement
 /// the excerpt prelude above already makes about imports. Five fences were
-/// measured to trip this group and nothing else.
+/// measured to need this and nothing else, at `-swift-version 6` on 6.2.4.
 ///
-/// Add a group here only after reading its diagnostics and finding all of them
-/// to be artefacts of the wrapping. Anything a reader would meet in their own
-/// file stays a failure.
-let toleratedWarningGroups: Set<String> = ["no-usage"]
+/// Matched by the shape of the message and not by the warning group, which is
+/// issue #42. The group `swiftc` files this under is `no-usage`, and that group
+/// is four diagnostics wide on 6.2.4:
+///
+///     initialization of immutable value 'X' was never used   ← the one below
+///     initialization of variable 'X' was never used
+///     result of call to 'X' is unused
+///     result of 'X' initializer is unused
+///
+/// The last two are not artefacts of anything. They fire on a *mid-fence* line,
+/// and a mid-fence line whose result is discarded is a line that does nothing
+/// while looking as though it does. Tolerating the group let this pass and
+/// print `ok`:
+///
+///     let folder = URL(fileURLWithPath: "/tmp/reports")
+///     folder.appendingPathComponent("summary.json")
+///     let data = try Data(contentsOf: folder)
+///
+/// `appendingPathComponent` is pure, so `folder` still points at the directory
+/// and `Data(contentsOf:)` throws at runtime. A reader copying that gets a
+/// broken example this gate certified.
+///
+/// The `var` twin on the second line is the same benign shape as the `let` one,
+/// and is left out anyway because no fence needs it. That is deliberate: an
+/// article that starts needing it goes red and someone reads the diagnostic and
+/// decides, which is the same bar every entry here was held to.
+///
+/// The rule is an allowlist of one shape rather than a denylist of the other
+/// three, and that direction is the load-bearing part. A denylist would let any
+/// diagnostic swift adds to the group in future pass in silence. Under an
+/// allowlist, a reworded message or a new member of the group stops matching
+/// and the fence goes **red**, which is a build failure someone reads rather
+/// than a hole nobody sees. String-matching a compiler message is brittle, and
+/// this is the arrangement in which brittle is safe: it breaks loudly, in the
+/// direction of holding the documentation to more rather than less.
+///
+/// Widen this only after reading the diagnostic and finding it to be an artefact
+/// of the wrapping. Anything a reader would meet in their own file stays a
+/// failure.
+func isArtefactOfTheWrapping(_ diagnostic: String) -> Bool {
+    diagnostic.contains(": warning: initialization of immutable value '")
+        && diagnostic.contains("' was never used;")
+}
 
 /// The warnings in a type-check run that this gate holds the documentation to.
 ///
-/// Two filters, both load-bearing.
+/// Three filters, all load-bearing.
 ///
 /// A diagnostic's first line is the one beginning with the file's absolute
 /// path. The compiler repeats the same text on the caret continuation lines,
 /// so matching every occurrence reads one warning as several — the same
-/// over-counting the strict-concurrency job in `ci.yml` guards against.
+/// over-counting the strict-concurrency job in `ci.yml` guards against. That
+/// same path prefix is also what stops a fence forging an exemption: a fence
+/// whose own source quotes a tolerated message appears only on a continuation
+/// line, which carries no path and is filtered out before the shape is read.
 ///
 /// `ownedPrefixes` keeps the verdict to files this gate wrote: the fence, its
 /// supporting fences, and the stubs. A warning inside a dependency's module
 /// interface is real information and is printed with the rest of the output,
 /// but it is not something an article can be edited to fix, so failing a fence
 /// for it would make this gate red for reasons no author here controls.
+///
+/// `isArtefactOfTheWrapping` drops the one diagnostic this script manufactures.
 func gatedWarnings(in output: String, ownedPrefixes: [String]) -> [String] {
     output
         .components(separatedBy: "\n")
         .filter { line in
             guard line.contains(": warning: ") else { return false }
             guard ownedPrefixes.contains(where: { line.hasPrefix($0) }) else { return false }
-            return !toleratedWarningGroups.contains { line.hasSuffix("[#\($0)]") }
+            return !isArtefactOfTheWrapping(line)
         }
 }
 
