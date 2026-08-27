@@ -20,6 +20,8 @@ import Foundation
 /// Literals build one, so the type is usually invisible at a call site:
 ///
 /// ```swift
+/// @Dependency(\.userDefaultsClient) var userDefaults
+///
 /// userDefaults.setPropertyList(["light", "dark"], forKey: "themes")
 /// userDefaults.setPropertyList(["launches": 3, "seen": true], forKey: "state")
 /// ```

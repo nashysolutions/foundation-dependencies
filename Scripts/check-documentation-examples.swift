@@ -3,8 +3,9 @@
 //  check-documentation-examples.swift
 //  foundation-dependencies
 //
-//  Type-checks every Swift fence in `README.md` and in the DocC articles
-//  against the package as it is actually built.
+//  Type-checks every Swift fence in `README.md`, in the DocC articles, and in
+//  the `///` doc comments under `Sources`, against the package as it is
+//  actually built.
 //
 //  Why this exists
 //  ---------------
@@ -183,6 +184,58 @@
 //    mislabelled. Both need a person, and neither should sit behind a green
 //    tick.
 //
+//  Which files are read, and what is still unread
+//  ----------------------------------------------
+//  Three corpora: `README.md`, every `.md` under a `Documentation.docc`
+//  directory, and the `///` doc comments in every `.swift` file under
+//  `Sources`.
+//
+//  Issue #54 is the shape of the damage the third one closes. A fence in a
+//  source doc comment renders into the DocC output and into Quick Help exactly
+//  as an article's fence does, so it is a claim the package makes in the same
+//  voice. Until this it was read by neither of the other two corpora, so it
+//  was not compiled, not parsed, and, the part that matters, not reported as
+//  skipped either. It was invisible, which is the tier issue #40 had just
+//  finished removing from the articles. Ten such fences had accumulated by
+//  then, and nine of the ten arrived in the two merges immediately before
+//  the gap was filed, so the number was growing quickly.
+//
+//  Doc comments on **every** declaration are read, not only public ones. That
+//  was measured rather than argued: all ten fences present when this was
+//  written sit on public declarations, so restricting the scan to the public
+//  surface would have collected an identical set, for the cost of deciding
+//  access control from text. Implicit `public` inside a `public extension`,
+//  nesting, and `@_spi` are each a way to get that answer quietly wrong, and
+//  getting it wrong in the permissive direction drops a fence back into the
+//  invisible tier this section exists to empty.
+//
+//  Three locations are deliberately still unread, and this is the list. A
+//  reader who takes a green run as "every fence in the repository compiles" is
+//  reading it as more than it says. `CONTRIBUTING.md` carries the same
+//  boundary for the person writing a fence, rather than for the person editing
+//  this script:
+//
+//  * **`Tests/`.** A doc comment there documents the suite for a contributor.
+//    It is not published, reaches neither DocC nor Quick Help, and the file it
+//    sits in is compiled by `swift test` already.
+//
+//  * **Ordinary `//` comments, anywhere.** An implementation note is not a
+//    claim the package publishes, and reading them would make a scratch
+//    snippet in a `// TODO` into a build failure.
+//
+//  * **Markdown outside the two corpora above**, such as `CONTRIBUTING.md`.
+//    `literalMarkdownPaths` is the list, and adding a file to it is the whole
+//    of what covering one takes.
+//
+//  A `/** */` doc comment is the one unread shape that **fails** rather than
+//  being listed here, and only when it actually holds a Swift-ish fence. There
+//  are none in this package, so supporting the shape would mean shipping a
+//  marker-stripping rule that no fence exercises, and the rule is genuinely
+//  ambiguous: a leading `*` inside such a comment may be a continuation marker
+//  or may be the code. Reporting it is the same judgement `.swiftish` already
+//  makes. Either it is a real example this gate is not checking, or it is not
+//  one, and both need a person.
+//
 
 import Foundation
 
@@ -288,6 +341,31 @@ struct SkippedFence {
 
     var label: String { "\(path):\(line)" }
 }
+
+/// One line of markdown, together with the line number it occupies in the file
+/// it came from.
+///
+/// The two are separate because a doc comment's markdown is not the file's own
+/// text. `/// let url = try bundle.url(...)` is line 42 of a Swift file and the
+/// line `let url = try bundle.url(...)` of the markdown embedded in it, and a
+/// scan that lost the first of those would report failures at a line number
+/// nobody can open an editor at.
+struct DocumentLine {
+
+    let text: String
+    let number: Int
+}
+
+/// A run of lines read as one piece of markdown, inside which a fence may open
+/// and close.
+///
+/// A markdown file is exactly one block. A Swift file is one block per doc
+/// comment, and that boundary is load-bearing rather than tidy: concatenating a
+/// file's doc comments into one stream would let a fence opened in one comment
+/// close in another twenty declarations away, silently swallowing everything
+/// between. Scanning them separately makes an unclosed fence what it actually
+/// is, which is a fence this script could not read, reported as such.
+typealias DocumentBlock = [DocumentLine]
 
 /// The opening delimiter of a fenced code block, split into the two parts that
 /// decide what happens to it.
@@ -412,6 +490,25 @@ func matches(_ pattern: String, in text: String) -> [[String]] {
 
 // MARK: - Discovery
 
+/// Every Swift file whose doc comments are read for fences.
+///
+/// The whole of `Sources`, with no filter on the declaration a comment is
+/// attached to. See "Which files are read" at the top of this file for why the
+/// public surface is not the smaller corpus it looks like, and for the three
+/// locations this deliberately leaves out.
+func swiftSourcePaths(root: String) -> [String] {
+    let manager = FileManager.default
+    var paths: [String] = []
+
+    let enumerator = manager.enumerator(atPath: root + "/Sources")
+    while let entry = enumerator?.nextObject() as? String {
+        guard entry.hasSuffix(".swift") else { continue }
+        paths.append("Sources/" + entry)
+    }
+
+    return paths.sorted()
+}
+
 func markdownPaths(root: String) -> [String] {
     let manager = FileManager.default
     var paths = literalMarkdownPaths.filter { manager.fileExists(atPath: root + "/" + $0) }
@@ -462,17 +559,34 @@ struct Scan {
     var skipped: [SkippedFence] = []
 }
 
-func scan(markdownAt path: String, root: String) -> Scan {
+/// The whole of a markdown file, as the single block it is.
+func markdownBlocks(at path: String, root: String) -> [DocumentBlock] {
     guard let contents = try? String(contentsOfFile: root + "/" + path, encoding: .utf8) else {
-        return Scan()
+        return []
     }
 
-    var scan = Scan()
+    return [
+        contents
+            .components(separatedBy: "\n")
+            .enumerated()
+            .map { DocumentLine(text: $0.element, number: $0.offset + 1) }
+    ]
+}
+
+func scan(path: String, blocks: [DocumentBlock]) -> Scan {
+    var result = Scan()
+    for block in blocks {
+        scanBlock(block, path: path, into: &result)
+    }
+    return result
+}
+
+func scanBlock(_ block: DocumentBlock, path: String, into scan: inout Scan) {
     var collecting: [String] = []
     var open: (opener: FenceOpener, kind: FenceKind, line: Int)?
 
-    for (index, line) in contents.components(separatedBy: "\n").enumerated() {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
+    for line in block {
+        let trimmed = line.text.trimmingCharacters(in: .whitespaces)
 
         // Every fence is tracked to its closing delimiter, not only the Swift
         // ones, so that the contents of a fence are never read as markdown. An
@@ -485,14 +599,14 @@ func scan(markdownAt path: String, root: String) -> Scan {
                         Fence(
                             path: path,
                             ordinal: scan.fences.count + 1,
-                            firstCodeLine: current.line + 2,
+                            firstCodeLine: current.line + 1,
                             code: normalised(collecting.joined(separator: "\n"))
                         )
                     )
                 }
                 open = nil
             } else if case .swift = current.kind {
-                collecting.append(line)
+                collecting.append(line.text)
             }
             continue
         }
@@ -504,7 +618,7 @@ func scan(markdownAt path: String, root: String) -> Scan {
             scan.skipped.append(
                 SkippedFence(
                     path: path,
-                    line: index + 1,
+                    line: line.number,
                     opener: trimmed,
                     reason: """
                         The language is `\(opener.language)` rather than `swift`, so this \
@@ -514,7 +628,7 @@ func scan(markdownAt path: String, root: String) -> Scan {
             )
         }
 
-        open = (opener, kind, index)
+        open = (opener, kind, line.number)
         collecting = []
     }
 
@@ -524,17 +638,127 @@ func scan(markdownAt path: String, root: String) -> Scan {
         scan.skipped.append(
             SkippedFence(
                 path: path,
-                line: current.line + 1,
+                line: current.line,
                 opener: current.opener.delimiter + current.opener.infoString,
                 reason: """
                     The fence is never closed, so its contents were read to the end of the \
-                    file and never compiled.
+                    surrounding markdown and never compiled.
                     """
             )
         )
     }
+}
 
-    return scan
+// MARK: - Doc comments
+
+/// The markdown a `///` doc comment line carries, or `nil` if the line is not
+/// one.
+///
+/// One space after the marker is consumed and no more, so that indentation
+/// *inside* a fence survives: `///     case .success:` is four spaces deep in
+/// the markdown, as its author wrote it.
+///
+/// `////` and longer runs are deliberately not doc comments. Swift reads those
+/// as an ordinary comment, so their contents reach neither DocC nor Quick Help
+/// and are not claims this package publishes.
+func documentationLine(_ trimmed: String) -> String? {
+    guard trimmed.hasPrefix("///") else { return nil }
+
+    let rest = String(trimmed.dropFirst(3))
+    guard !rest.hasPrefix("/") else { return nil }
+
+    return rest.hasPrefix(" ") ? String(rest.dropFirst()) : rest
+}
+
+/// The doc comments of one Swift file, plus any this script declined to read.
+struct DocumentationScan {
+
+    var blocks: [DocumentBlock] = []
+    var unread: [SkippedFence] = []
+}
+
+/// Every `///` doc comment in one Swift file, one block each, plus a report for
+/// each `/** */` doc comment that holds a fence this script cannot read.
+///
+/// See "Which files are read" at the top of this file for why the block form is
+/// reported rather than supported. In short, this package contains none, so the
+/// marker-stripping rule it needs would be shipped unexercised, and the rule is
+/// ambiguous in a way the line form's is not.
+func documentationComments(inSwiftAt path: String, root: String) -> DocumentationScan {
+    guard let contents = try? String(contentsOfFile: root + "/" + path, encoding: .utf8) else {
+        return DocumentationScan()
+    }
+
+    var result = DocumentationScan()
+    var run: DocumentBlock = []
+    var blockComment: (line: Int, holdsFence: Bool)?
+
+    for (index, line) in contents.components(separatedBy: "\n").enumerated() {
+        let number = index + 1
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+        if var current = blockComment {
+            // A continuation marker is stripped before the line is read as a
+            // fence delimiter, because `* ```swift` is how such a comment is
+            // conventionally written and the marker is not part of the fence.
+            let body = trimmed.hasPrefix("*") && !trimmed.hasPrefix("*/")
+                ? String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
+                : trimmed
+
+            if let opener = fenceOpener(body) {
+                switch classify(opener) {
+                case .swift, .swiftish:
+                    current.holdsFence = true
+                case .other:
+                    break
+                }
+            }
+
+            if trimmed.contains("*/") {
+                if current.holdsFence {
+                    result.unread.append(
+                        SkippedFence(
+                            path: path,
+                            line: current.line,
+                            opener: "/**",
+                            reason: """
+                                The fence is inside a `/** */` doc comment, which this script \
+                                does not read. Rewrite the comment with `///` markers, which \
+                                is the form every doc comment in this package already uses \
+                                and the form this script compiles.
+                                """
+                        )
+                    )
+                }
+                blockComment = nil
+            } else {
+                blockComment = current
+            }
+            continue
+        }
+
+        if let content = documentationLine(trimmed) {
+            run.append(DocumentLine(text: content, number: number))
+            continue
+        }
+
+        if !run.isEmpty {
+            result.blocks.append(run)
+            run = []
+        }
+
+        // A one-line `/** ... */` cannot hold a fence, which needs a line of
+        // its own for each delimiter, so only the multi-line form is tracked.
+        if trimmed.hasPrefix("/**"), trimmed != "/**/", !trimmed.contains("*/") {
+            blockComment = (line: number, holdsFence: false)
+        }
+    }
+
+    if !run.isEmpty {
+        result.blocks.append(run)
+    }
+
+    return result
 }
 
 // MARK: - Cross-fence references
@@ -981,7 +1205,21 @@ let environment = TypeCheckEnvironment(
 )
 
 let markdownPathsToScan = markdownPaths(root: root)
-let scans = markdownPathsToScan.map { scan(markdownAt: $0, root: root) }
+let sourcePathsToScan = swiftSourcePaths(root: root)
+
+var scans = markdownPathsToScan.map { scan(path: $0, blocks: markdownBlocks(at: $0, root: root)) }
+
+// The doc comments come after the markdown so that a run reads in the order a
+// person would look: the README, the articles, then the source. A fence's
+// identity is its content and its file, never its position in this list, so the
+// order is presentation and nothing depends on it.
+for path in sourcePathsToScan {
+    let comments = documentationComments(inSwiftAt: path, root: root)
+    var sourceScan = scan(path: path, blocks: comments.blocks)
+    sourceScan.skipped.append(contentsOf: comments.unread)
+    scans.append(sourceScan)
+}
+
 let allFences = scans.flatMap(\.fences)
 let skipped = scans.flatMap(\.skipped)
 
@@ -1023,7 +1261,10 @@ guard checkable.count + syntaxOnly.count + skipped.count == swiftishCount else {
     exit(1)
 }
 
-print("Found \(swiftishCount) Swift fences across \(markdownPathsToScan.count) files.")
+print(
+    "Found \(swiftishCount) Swift fences across \(markdownPathsToScan.count) markdown "
+        + "file(s) and the doc comments of \(sourcePathsToScan.count) source file(s)."
+)
 print("\(checkable.count) to type-check, \(syntaxOnly.count) to parse, \(skipped.count) skipped.\n")
 
 var failures: [(fence: Fence, headline: String, detail: String)] = []

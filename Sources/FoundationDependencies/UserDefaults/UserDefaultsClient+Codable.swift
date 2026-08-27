@@ -19,6 +19,8 @@ public extension UserDefaultsClient {
     /// Decodes a value of the given type from JSON stored under `key`.
     ///
     /// ```swift
+    /// @Dependency(\.userDefaultsClient) var userDefaults
+    ///
     /// let settings = try userDefaults.decode(Settings.self, forKey: "settings")
     /// ```
     ///
@@ -48,7 +50,9 @@ public extension UserDefaultsClient {
     /// `value` is `nil`.
     ///
     /// ```swift
-    /// try userDefaults.encode(settings, forKey: "settings")
+    /// @Dependency(\.userDefaultsClient) var userDefaults
+    ///
+    /// try userDefaults.encode(Settings(theme: "dark"), forKey: "settings")
     /// ```
     ///
     /// Removing on `nil` is what every other setter that accepts one does, so a

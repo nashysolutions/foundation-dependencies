@@ -18,15 +18,20 @@ import Files
 /// This client is typically injected into a higher-level service that needs to store or retrieve
 /// resources on disk.
 ///
-/// Example usage:
+/// Example usage, at the point the client is injected:
 ///
 /// ```swift
-/// let client = FileSystemResourceClient { directory, subfolder in
-///     return try FileSystemFolderStore(directory: directory, subfolder: subfolder)
-/// }
-/// let store = try client.makeStore(.documents, "Cache")
-/// try store.saveResource(someCodableObject, filename: "resource.json")
+/// @Dependency(\.fileSystemResourceClient) var resourceClient
+///
+/// let store = try resourceClient.makeStore(.documents, "Cache")
+/// try store.saveResource(["theme": "dark"], filename: "settings.json")
 /// ```
+///
+/// `Files` ships no concrete `FileSystemContext`, so the client that reaches the
+/// real file system is yours to build. The `Registering a Live Client` section of
+/// this type's article writes that factory closure out in full, against the
+/// context <doc:FileSystemClient> shows how to write.
+
 public struct FileSystemResourceClient: Sendable {
 
     /// A closure used to construct a resource store for a specific directory and optional subfolder.
