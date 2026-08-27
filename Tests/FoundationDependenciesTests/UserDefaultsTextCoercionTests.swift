@@ -84,8 +84,8 @@ struct UserDefaultsTextCoercionTests {
           arguments: StoreKind.allCases, booleanFromStringCases)
     func booleanReadsAString(kind: StoreKind, row: Coercion<String, Bool>) throws {
         try withStore(kind) { store in
-            store.setString(row.written, "key")
-            #expect(store.bool("key") == row.expected)
+            store.setString(row.written, forKey: "key")
+            #expect(store.bool(forKey: "key") == row.expected)
         }
     }
 
@@ -93,8 +93,8 @@ struct UserDefaultsTextCoercionTests {
           arguments: StoreKind.allCases, booleanFromDoubleCases)
     func booleanReadsADouble(kind: StoreKind, row: Coercion<Double, Bool>) throws {
         try withStore(kind) { store in
-            store.setDouble(row.written, "key")
-            #expect(store.bool("key") == row.expected)
+            store.setDouble(row.written, forKey: "key")
+            #expect(store.bool(forKey: "key") == row.expected)
         }
     }
 
@@ -104,8 +104,8 @@ struct UserDefaultsTextCoercionTests {
           arguments: StoreKind.allCases, [1, 2, -1, 0])
     func booleanReadsAnInt(kind: StoreKind, value: Int) throws {
         try withStore(kind) { store in
-            store.setInt(value, "key")
-            #expect(store.bool("key") == (value != 0))
+            store.setInt(value, forKey: "key")
+            #expect(store.bool(forKey: "key") == (value != 0))
         }
     }
 
@@ -113,8 +113,8 @@ struct UserDefaultsTextCoercionTests {
           arguments: StoreKind.allCases, stringFromDoubleCases)
     func stringReadsADouble(kind: StoreKind, row: Coercion<Double, String>) throws {
         try withStore(kind) { store in
-            store.setDouble(row.written, "key")
-            #expect(store.string("key") == row.expected)
+            store.setDouble(row.written, forKey: "key")
+            #expect(store.string(forKey: "key") == row.expected)
         }
     }
 
@@ -122,8 +122,8 @@ struct UserDefaultsTextCoercionTests {
           arguments: StoreKind.allCases, [0, 42, -7, Int.max])
     func stringReadsAnInt(kind: StoreKind, value: Int) throws {
         try withStore(kind) { store in
-            store.setInt(value, "key")
-            #expect(store.string("key") == String(value))
+            store.setInt(value, forKey: "key")
+            #expect(store.string(forKey: "key") == String(value))
         }
     }
 
@@ -131,8 +131,8 @@ struct UserDefaultsTextCoercionTests {
           arguments: StoreKind.allCases, [true, false])
     func stringReadsABool(kind: StoreKind, flag: Bool) throws {
         try withStore(kind) { store in
-            store.setBool(flag, "key")
-            #expect(store.string("key") == (flag ? "1" : "0"))
+            store.setBool(flag, forKey: "key")
+            #expect(store.string(forKey: "key") == (flag ? "1" : "0"))
         }
     }
 
@@ -143,7 +143,7 @@ struct UserDefaultsTextCoercionTests {
     func aDateOrArrayHasNoStringReading(kind: StoreKind, seeded: SeededValue) throws {
         try withStore(kind) { store in
             seeded.write(into: store, key: "key")
-            #expect(store.string("key") == nil)
+            #expect(store.string(forKey: "key") == nil)
         }
     }
 
@@ -153,17 +153,17 @@ struct UserDefaultsTextCoercionTests {
           arguments: StoreKind.allCases)
     func stringArrayReadsOnlyStrings(kind: StoreKind) throws {
         try withStore(kind) { store in
-            store.setObject(["a", "b"] as [Any], "all-strings")
-            store.setObject(["a", 1] as [Any], "mixed")
-            store.setObject([1, 2], "numbers")
-            store.setObject([sampleDate], "dates")
-            store.setString("abc", "text")
+            store.setObject(["a", "b"] as [Any], forKey: "all-strings")
+            store.setObject(["a", 1] as [Any], forKey: "mixed")
+            store.setObject([1, 2], forKey: "numbers")
+            store.setObject([sampleDate], forKey: "dates")
+            store.setString("abc", forKey: "text")
 
-            #expect(store.stringArray("all-strings") == ["a", "b"])
-            #expect(store.stringArray("mixed") == nil)
-            #expect(store.stringArray("numbers") == nil)
-            #expect(store.stringArray("dates") == nil)
-            #expect(store.stringArray("text") == nil)
+            #expect(store.stringArray(forKey: "all-strings") == ["a", "b"])
+            #expect(store.stringArray(forKey: "mixed") == nil)
+            #expect(store.stringArray(forKey: "numbers") == nil)
+            #expect(store.stringArray(forKey: "dates") == nil)
+            #expect(store.stringArray(forKey: "text") == nil)
         }
     }
 
@@ -172,23 +172,23 @@ struct UserDefaultsTextCoercionTests {
     @Test("date reads only a stored date", arguments: StoreKind.allCases)
     func dateReadsOnlyADate(kind: StoreKind) throws {
         try withStore(kind) { store in
-            store.setDouble(1000, "number")
-            store.setString("2026-08-18", "text")
-            store.setStringArray(["a"], "list")
+            store.setDouble(1000, forKey: "number")
+            store.setString("2026-08-18", forKey: "text")
+            store.setStringArray(["a"], forKey: "list")
 
-            #expect(store.date("number") == nil)
-            #expect(store.date("text") == nil)
-            #expect(store.date("list") == nil)
+            #expect(store.date(forKey: "number") == nil)
+            #expect(store.date(forKey: "text") == nil)
+            #expect(store.date(forKey: "list") == nil)
         }
     }
 
     @Test("Stored data has no Boolean or string reading", arguments: StoreKind.allCases)
     func dataHasNoBooleanOrStringReading(kind: StoreKind) throws {
         try withStore(kind) { store in
-            store.setObject(Data([1, 2, 3]), "key")
+            store.setObject(Data([1, 2, 3]), forKey: "key")
 
-            #expect(store.bool("key") == false)
-            #expect(store.string("key") == nil)
+            #expect(store.bool(forKey: "key") == false)
+            #expect(store.string(forKey: "key") == nil)
         }
     }
 }

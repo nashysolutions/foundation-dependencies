@@ -8,7 +8,7 @@ A wrapper around `Bundle` that uses a `BundleResourceProvider` abstraction to al
 
 ## `userDefaultsClient`
 
-A testable interface to `UserDefaults`, using `UserDefaultsStoreProtocol` to support injection and mocking.
+A testable interface to `UserDefaults`, built as a struct of closures with a method per endpoint, so a single operation can be replaced without restating the rest.
 
 ## `fileSystemClient`
 

@@ -254,7 +254,7 @@ withDependencies {
 }
 ```
 
-Every endpoint is a `var`, so a single one can be swapped without restating the other nine. This is the pattern described in <doc:TestingAndOverrides>, and it works here in a way it does not for `userDefaultsClient`, whose operations are read-only.
+Every endpoint is a `var`, so a single one can be swapped without restating the other nine. This is the pattern described in <doc:TestingAndOverrides>, and `userDefaultsClient` now follows it too.
 
 Sharing is safe. `testValue` is a single stored instance shared by every test that does not override the dependency, but it holds no state, so nothing one test does through it can be observed by the next. Taking a copy and mutating the copy leaves the shared instance untouched.
 

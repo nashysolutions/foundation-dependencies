@@ -31,9 +31,9 @@ struct UserDefaultsStoreAbsenceTests {
     func removeObjectClearsTheKey(kind: StoreKind, seeded: SeededValue) throws {
         try withStore(kind) { store in
             seeded.write(into: store, key: "key")
-            #expect(store.object("key") != nil)
+            #expect(store.object(forKey: "key") != nil)
 
-            store.removeObject("key")
+            store.removeObject(forKey: "key")
 
             expectAbsent(store, key: "key")
         }
@@ -44,7 +44,7 @@ struct UserDefaultsStoreAbsenceTests {
     func nilWriteRemovesTheKey(kind: StoreKind, setter: NilCapableSetter) throws {
         try withStore(kind) { store in
             setter.seed(store, key: "key")
-            #expect(store.object("key") != nil)
+            #expect(store.object(forKey: "key") != nil)
 
             setter.writeNil(store, key: "key")
 
@@ -58,10 +58,10 @@ struct UserDefaultsStoreAbsenceTests {
           arguments: StoreKind.allCases)
     func emptyStringIsStored(kind: StoreKind) throws {
         try withStore(kind) { store in
-            store.setString("", "key")
+            store.setString("", forKey: "key")
 
-            #expect(store.object("key") != nil)
-            #expect(store.string("key") == "")
+            #expect(store.object(forKey: "key") != nil)
+            #expect(store.string(forKey: "key") == "")
         }
     }
 
@@ -70,10 +70,10 @@ struct UserDefaultsStoreAbsenceTests {
           arguments: StoreKind.allCases)
     func emptyStringArrayIsStored(kind: StoreKind) throws {
         try withStore(kind) { store in
-            store.setStringArray([], "key")
+            store.setStringArray([], forKey: "key")
 
-            #expect(store.object("key") != nil)
-            #expect(store.stringArray("key") == [])
+            #expect(store.object(forKey: "key") != nil)
+            #expect(store.stringArray(forKey: "key") == [])
         }
     }
 
@@ -81,7 +81,7 @@ struct UserDefaultsStoreAbsenceTests {
           arguments: StoreKind.allCases)
     func removingAnAbsentKeyIsHarmless(kind: StoreKind) throws {
         try withStore(kind) { store in
-            store.removeObject("never-written")
+            store.removeObject(forKey: "never-written")
 
             expectAbsent(store, key: "never-written")
         }
@@ -90,10 +90,10 @@ struct UserDefaultsStoreAbsenceTests {
     @Test("Removing a key twice is harmless", arguments: StoreKind.allCases)
     func removingTwiceIsHarmless(kind: StoreKind) throws {
         try withStore(kind) { store in
-            store.setInt(42, "key")
+            store.setInt(42, forKey: "key")
 
-            store.removeObject("key")
-            store.removeObject("key")
+            store.removeObject(forKey: "key")
+            store.removeObject(forKey: "key")
 
             expectAbsent(store, key: "key")
         }
@@ -103,11 +103,11 @@ struct UserDefaultsStoreAbsenceTests {
     @Test("A key can be written again after removal", arguments: StoreKind.allCases)
     func aRemovedKeyCanBeWrittenAgain(kind: StoreKind) throws {
         try withStore(kind) { store in
-            store.setInt(42, "key")
-            store.removeObject("key")
-            store.setInt(7, "key")
+            store.setInt(42, forKey: "key")
+            store.removeObject(forKey: "key")
+            store.setInt(7, forKey: "key")
 
-            #expect(store.int("key") == 7)
+            #expect(store.int(forKey: "key") == 7)
         }
     }
 }

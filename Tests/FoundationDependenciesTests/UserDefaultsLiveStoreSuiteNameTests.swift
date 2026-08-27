@@ -50,7 +50,7 @@ struct UserDefaultsLiveStoreSuiteNameTests {
     func standardIsReachable() {
         let neverWritten = "foundation-dependencies.never-written.\(UUID().uuidString)"
 
-        #expect(UserDefaultsLiveStore.standard.string(neverWritten) == nil)
+        #expect(UserDefaultsLiveStore.standard.string(forKey: neverWritten) == nil)
     }
 
     /// Two stores over the same suite name see each other's writes, which is what makes
@@ -61,9 +61,9 @@ struct UserDefaultsLiveStoreSuiteNameTests {
             let writer = try #require(UserDefaultsLiveStore(suiteName: suiteName))
             let reader = try #require(UserDefaultsLiveStore(suiteName: suiteName))
 
-            writer.setInt(42, "key")
+            writer.setInt(42, forKey: "key")
 
-            #expect(reader.int("key") == 42)
+            #expect(reader.int(forKey: "key") == 42)
         }
     }
 
@@ -74,13 +74,13 @@ struct UserDefaultsLiveStoreSuiteNameTests {
     func removingThePersistentDomainEmptiesTheSuite() throws {
         try withScratchSuite { suiteName in
             let store = try #require(UserDefaultsLiveStore(suiteName: suiteName))
-            store.setInt(42, "key")
-            #expect(store.int("key") == 42)
+            store.setInt(42, forKey: "key")
+            #expect(store.int(forKey: "key") == 42)
 
             UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName)
 
             let reopened = try #require(UserDefaultsLiveStore(suiteName: suiteName))
-            expectAbsent(reopened, key: "key")
+            expectAbsent(UserDefaultsClient(reopened), key: "key")
         }
     }
 }

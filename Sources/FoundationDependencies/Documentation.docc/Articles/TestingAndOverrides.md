@@ -19,7 +19,7 @@ withDependencies {
 }
 ```
 
-`userDefaultsClient` is the exception. It is typed as a protocol whose operations are read-only properties, so a store cannot have one endpoint swapped out. Seed a `UserDefaultsTestStore` instead, as described in <doc:UserDefaultsClient>.
+`userDefaultsClient` works the same way, and used not to: its operations were read-only properties on a protocol until the interface became a struct of closures. Seeding a `UserDefaultsTestStore` is still usually the shorter route when a test only needs values in place. See <doc:UserDefaultsClient>.
 
 ## Shared Overrides
 

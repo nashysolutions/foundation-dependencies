@@ -21,8 +21,8 @@ struct UserDefaultsStoreRoundTripTests {
     @Test("A Boolean reads back as written", arguments: StoreKind.allCases, [true, false])
     func boolRoundTrips(kind: StoreKind, value: Bool) throws {
         try withStore(kind) { store in
-            store.setBool(value, "key")
-            #expect(store.bool("key") == value)
+            store.setBool(value, forKey: "key")
+            #expect(store.bool(forKey: "key") == value)
         }
     }
 
@@ -32,8 +32,8 @@ struct UserDefaultsStoreRoundTripTests {
     )
     func intRoundTrips(kind: StoreKind, value: Int) throws {
         try withStore(kind) { store in
-            store.setInt(value, "key")
-            #expect(store.int("key") == value)
+            store.setInt(value, forKey: "key")
+            #expect(store.int(forKey: "key") == value)
         }
     }
 
@@ -46,8 +46,8 @@ struct UserDefaultsStoreRoundTripTests {
     )
     func doubleRoundTrips(kind: StoreKind, value: Double) throws {
         try withStore(kind) { store in
-            store.setDouble(value, "key")
-            #expect(matches(store.double("key"), value))
+            store.setDouble(value, forKey: "key")
+            #expect(matches(store.double(forKey: "key"), value))
         }
     }
 
@@ -57,8 +57,8 @@ struct UserDefaultsStoreRoundTripTests {
     )
     func stringRoundTrips(kind: StoreKind, value: String) throws {
         try withStore(kind) { store in
-            store.setString(value, "key")
-            #expect(store.string("key") == value)
+            store.setString(value, forKey: "key")
+            #expect(store.string(forKey: "key") == value)
         }
     }
 
@@ -68,16 +68,16 @@ struct UserDefaultsStoreRoundTripTests {
     )
     func stringArrayRoundTrips(kind: StoreKind, value: [String]) throws {
         try withStore(kind) { store in
-            store.setStringArray(value, "key")
-            #expect(store.stringArray("key") == value)
+            store.setStringArray(value, forKey: "key")
+            #expect(store.stringArray(forKey: "key") == value)
         }
     }
 
     @Test("A date reads back as written", arguments: StoreKind.allCases)
     func dateRoundTrips(kind: StoreKind) throws {
         try withStore(kind) { store in
-            store.setDate(sampleDate, "key")
-            #expect(store.date("key") == sampleDate)
+            store.setDate(sampleDate, forKey: "key")
+            #expect(store.date(forKey: "key") == sampleDate)
         }
     }
 
@@ -87,19 +87,19 @@ struct UserDefaultsStoreRoundTripTests {
           arguments: StoreKind.allCases)
     func objectWritesReachTheTypedReaders(kind: StoreKind) throws {
         try withStore(kind) { store in
-            store.setObject("abc", "text")
-            store.setObject(42, "number")
-            store.setObject(3.5, "fraction")
-            store.setObject(true, "flag")
-            store.setObject(sampleDate, "moment")
-            store.setObject(["a", "b"], "list")
+            store.setObject("abc", forKey: "text")
+            store.setObject(42, forKey: "number")
+            store.setObject(3.5, forKey: "fraction")
+            store.setObject(true, forKey: "flag")
+            store.setObject(sampleDate, forKey: "moment")
+            store.setObject(["a", "b"], forKey: "list")
 
-            #expect(store.string("text") == "abc")
-            #expect(store.int("number") == 42)
-            #expect(store.double("fraction") == 3.5)
-            #expect(store.bool("flag") == true)
-            #expect(store.date("moment") == sampleDate)
-            #expect(store.stringArray("list") == ["a", "b"])
+            #expect(store.string(forKey: "text") == "abc")
+            #expect(store.int(forKey: "number") == 42)
+            #expect(store.double(forKey: "fraction") == 3.5)
+            #expect(store.bool(forKey: "flag") == true)
+            #expect(store.date(forKey: "moment") == sampleDate)
+            #expect(store.stringArray(forKey: "list") == ["a", "b"])
         }
     }
 
@@ -117,7 +117,7 @@ struct UserDefaultsStoreRoundTripTests {
     func aWrittenKeyIsPresent(kind: StoreKind, seeded: SeededValue) throws {
         try withStore(kind) { store in
             seeded.write(into: store, key: "key")
-            #expect(store.object("key") != nil)
+            #expect(store.object(forKey: "key") != nil)
         }
     }
 
@@ -125,25 +125,25 @@ struct UserDefaultsStoreRoundTripTests {
           arguments: StoreKind.allCases)
     func lastWriteWins(kind: StoreKind) throws {
         try withStore(kind) { store in
-            store.setInt(42, "key")
-            #expect(store.int("key") == 42)
+            store.setInt(42, forKey: "key")
+            #expect(store.int(forKey: "key") == 42)
 
-            store.setString("abc", "key")
-            #expect(store.string("key") == "abc")
-            #expect(store.int("key") == 0)
+            store.setString("abc", forKey: "key")
+            #expect(store.string(forKey: "key") == "abc")
+            #expect(store.int(forKey: "key") == 0)
         }
     }
 
     @Test("Keys do not interfere with each other", arguments: StoreKind.allCases)
     func keysAreIndependent(kind: StoreKind) throws {
         try withStore(kind) { store in
-            store.setInt(1, "first")
-            store.setInt(2, "second")
+            store.setInt(1, forKey: "first")
+            store.setInt(2, forKey: "second")
 
-            store.removeObject("first")
+            store.removeObject(forKey: "first")
 
-            #expect(store.int("first") == 0)
-            #expect(store.int("second") == 2)
+            #expect(store.int(forKey: "first") == 0)
+            #expect(store.int(forKey: "second") == 2)
         }
     }
 }

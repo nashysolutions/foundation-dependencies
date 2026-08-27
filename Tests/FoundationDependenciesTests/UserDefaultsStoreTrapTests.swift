@@ -57,7 +57,7 @@ struct UserDefaultsStoreTrapTests {
             guard let store = UserDefaultsLiveStore(suiteName: trapSuiteName) else {
                 return
             }
-            store.setObject(nonPropertyListValue(), "key")
+            store.setObject(nonPropertyListValue(), forKey: "key")
         }
         emptyTrapSuite()
     }
@@ -66,7 +66,7 @@ struct UserDefaultsStoreTrapTests {
     func testStoreEndsTheProcess() async {
         await #expect(processExitsWith: .failure) {
             let store = UserDefaultsTestStore()
-            store.setObject(nonPropertyListValue(), "key")
+            store.setObject(nonPropertyListValue(), forKey: "key")
         }
     }
 
@@ -81,7 +81,7 @@ struct UserDefaultsStoreTrapTests {
     func aValidValueLeavesTheProcessAlive() async {
         await #expect(processExitsWith: .success) {
             let store = UserDefaultsTestStore()
-            store.setObject("abc", "key")
+            store.setObject("abc", forKey: "key")
         }
     }
 

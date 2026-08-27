@@ -22,11 +22,12 @@ import FoundationDependencies
 /// the second would still pass a build and would still pass every other case in this target,
 /// because nothing else here resolves the dependency at all. Both are asserted.
 ///
-/// Every assertion is a write and a read rather than a comparison of instance identity.
-/// Identity is a fact about the store being a class, and the interface is expected to become
-/// a struct of closures, at which point an identity assertion would be measuring the box
-/// rather than the store. A write that is or is not visible later means the same thing under
-/// either shape.
+/// Every assertion is a write and a read rather than a comparison of instance identity. The
+/// resolved value is a ``UserDefaultsClient``, a struct of closures, so two resolutions are
+/// never the same instance whatever store is behind them and an identity assertion would be
+/// measuring the box rather than the store. A write that is or is not visible later means the
+/// same thing under either shape, which is why the pair survived the interface being
+/// reshaped.
 @Suite("Default store isolation")
 struct UserDefaultsDefaultStoreIsolationTests {
 
@@ -57,11 +58,11 @@ struct UserDefaultsDefaultStoreIsolationTests {
         let written = "written through the first resolution"
 
         let first = defaultStore()
-        first.setString(written, key)
+        first.setString(written, forKey: key)
         let second = defaultStore()
 
         #expect(
-            second.string(key) == written,
+            second.string(forKey: key) == written,
             """
             A second resolution inside one case did not see a write made through the first, \
             so the default is handing out a new store every time it is asked rather than once \
@@ -128,7 +129,7 @@ private func expectAnEmptyDefaultStoreThenWrite(
     let store = defaultStore()
 
     #expect(
-        store.string(sharedProbeKey) == nil,
+        store.string(forKey: sharedProbeKey) == nil,
         """
         This case installed no store of its own and still found a value waiting under \
         \(sharedProbeKey), so it was handed the store its sibling case had already written to. \
@@ -138,20 +139,21 @@ private func expectAnEmptyDefaultStoreThenWrite(
         sourceLocation: sourceLocation
     )
 
-    store.setString(marker, sharedProbeKey)
+    store.setString(marker, forKey: sharedProbeKey)
 }
 
 /// Resolves the store a caller gets when it has installed none.
 ///
 /// This is the one place in the file that says how the dependency is reached, so the cases
-/// above stay written in terms of what a store does. The interface is expected to be reshaped,
-/// and when it is, this signature and this body are the only lines here that have to move.
+/// above stay written in terms of what a store does. That held: reshaping the interface moved
+/// this signature and this body and nothing else here.
 ///
 /// The key form rather than `@Dependency(\.userDefaultsClient)`, because the key path form
 /// warns under `-strict-concurrency=complete` for the reason set out on `Logger.init(category:)`
-/// in the Log module. Both routes read the same stored value.
+/// in the Log module. Both routes read the same stored value. `UserDefaultsClient` is now its
+/// own dependency key, so the key form names the client rather than a separate key type.
 @MainActor
-private func defaultStore() -> any UserDefaultsStoreProtocol {
-    @Dependency(UserDefaultsKey.self) var store
+private func defaultStore() -> UserDefaultsClient {
+    @Dependency(UserDefaultsClient.self) var store
     return store
 }

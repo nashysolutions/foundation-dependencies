@@ -52,8 +52,8 @@ struct UserDefaultsSpecialValueTests {
           arguments: StoreKind.allCases, SpecialDouble.allCases)
     func booleanReadsASpecialValue(kind: StoreKind, special: SpecialDouble) throws {
         try withStore(kind) { store in
-            store.setDouble(special.value, "key")
-            #expect(store.bool("key") == true)
+            store.setDouble(special.value, forKey: "key")
+            #expect(store.bool(forKey: "key") == true)
         }
     }
 
@@ -71,8 +71,8 @@ struct UserDefaultsSpecialValueTests {
         }
 
         try withStore(kind) { store in
-            store.setDouble(special.value, "key")
-            #expect(store.int("key") == expected)
+            store.setDouble(special.value, forKey: "key")
+            #expect(store.int(forKey: "key") == expected)
         }
     }
 
@@ -80,8 +80,8 @@ struct UserDefaultsSpecialValueTests {
           arguments: StoreKind.allCases, SpecialDouble.allCases)
     func doubleReadsASpecialValue(kind: StoreKind, special: SpecialDouble) throws {
         try withStore(kind) { store in
-            store.setDouble(special.value, "key")
-            #expect(matches(store.double("key"), special.value))
+            store.setDouble(special.value, forKey: "key")
+            #expect(matches(store.double(forKey: "key"), special.value))
         }
     }
 
@@ -96,8 +96,8 @@ struct UserDefaultsSpecialValueTests {
         }
 
         try withStore(kind) { store in
-            store.setDouble(special.value, "key")
-            #expect(store.string("key") == expected)
+            store.setDouble(special.value, forKey: "key")
+            #expect(store.string(forKey: "key") == expected)
         }
     }
 
@@ -108,10 +108,10 @@ struct UserDefaultsSpecialValueTests {
         special: SpecialDouble
     ) throws {
         try withStore(kind) { store in
-            store.setDouble(special.value, "key")
+            store.setDouble(special.value, forKey: "key")
 
-            #expect(store.stringArray("key") == nil)
-            #expect(store.date("key") == nil)
+            #expect(store.stringArray(forKey: "key") == nil)
+            #expect(store.date(forKey: "key") == nil)
         }
     }
 
@@ -126,11 +126,11 @@ struct UserDefaultsSpecialValueTests {
           arguments: StoreKind.allCases, ["inf", "-inf", "nan", "infinity", "INF", "NaN"])
     func spelledOutNamesAreNotNumbers(kind: StoreKind, text: String) throws {
         try withStore(kind) { store in
-            store.setString(text, "key")
+            store.setString(text, forKey: "key")
 
-            #expect(store.int("key") == 0)
-            #expect(store.double("key") == 0)
-            #expect(store.bool("key") == false)
+            #expect(store.int(forKey: "key") == 0)
+            #expect(store.double(forKey: "key") == 0)
+            #expect(store.bool(forKey: "key") == false)
         }
     }
 }
