@@ -221,7 +221,9 @@
 //
 //  * **Ordinary `//` comments, anywhere.** An implementation note is not a
 //    claim the package publishes, and reading them would make a scratch
-//    snippet in a `// TODO` into a build failure.
+//    snippet in a to-do comment into a build failure. (That phrase avoids
+//    spelling the marker itself, so that the `todo` rule, which is left on for
+//    this file, does not fire on the sentence describing it.)
 //
 //  * **Markdown outside the two corpora above**, such as `CONTRIBUTING.md`.
 //    `literalMarkdownPaths` is the list, and adding a file to it is the whole
@@ -559,6 +561,18 @@ struct Scan {
     var skipped: [SkippedFence] = []
 }
 
+/// A fence whose opening delimiter has been read and whose closing delimiter
+/// has not, together with where it began.
+///
+/// Tracked for every fence rather than only the Swift ones, so that the body of
+/// a fence is never read as markdown.
+struct OpenFence {
+
+    let opener: FenceOpener
+    let kind: FenceKind
+    let line: Int
+}
+
 /// The whole of a markdown file, as the single block it is.
 func markdownBlocks(at path: String, root: String) -> [DocumentBlock] {
     guard let contents = try? String(contentsOfFile: root + "/" + path, encoding: .utf8) else {
@@ -583,7 +597,7 @@ func scan(path: String, blocks: [DocumentBlock]) -> Scan {
 
 func scanBlock(_ block: DocumentBlock, path: String, into scan: inout Scan) {
     var collecting: [String] = []
-    var open: (opener: FenceOpener, kind: FenceKind, line: Int)?
+    var open: OpenFence?
 
     for line in block {
         let trimmed = line.text.trimmingCharacters(in: .whitespaces)
@@ -628,7 +642,7 @@ func scanBlock(_ block: DocumentBlock, path: String, into scan: inout Scan) {
             )
         }
 
-        open = (opener, kind, line.number)
+        open = OpenFence(opener: opener, kind: kind, line: line.number)
         collecting = []
     }
 
@@ -1267,7 +1281,17 @@ print(
 )
 print("\(checkable.count) to type-check, \(syntaxOnly.count) to parse, \(skipped.count) skipped.\n")
 
-var failures: [(fence: Fence, headline: String, detail: String)] = []
+/// One documentation example that did not clear the standard recorded for it,
+/// with the headline separated from the detail because the two are printed at
+/// different points in the report.
+struct ExampleFailure {
+
+    let fence: Fence
+    let headline: String
+    let detail: String
+}
+
+var failures: [ExampleFailure] = []
 
 for fence in checkable {
     let supporting = supportingFences(for: fence, among: checkable)
@@ -1313,10 +1337,10 @@ for fence in checkable {
         : "\nHeld against the documentation:\n" + warnings.joined(separator: "\n") + "\n"
 
     failures.append(
-        (
-            fence,
-            headline,
-            """
+        ExampleFailure(
+            fence: fence,
+            headline: headline,
+            detail: """
             Compiled \(compiled).
             \(warningNote)
             --- as written, at file scope ---
@@ -1338,10 +1362,10 @@ for (fence, entry) in syntaxOnly {
     guard outcome.isClean else {
         print("  FAILED    \(fence.label)")
         failures.append(
-            (
-                fence,
-                "does not parse",
-                "This fence is not type-checked — see the entry recorded "
+            ExampleFailure(
+                fence: fence,
+                headline: "does not parse",
+                detail: "This fence is not type-checked — see the entry recorded "
                     + "for it — so parsing is the whole of what is being "
                     + "asserted here, and it did not hold.\n\n"
                     + outcome.output
