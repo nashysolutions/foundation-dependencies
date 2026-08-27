@@ -36,6 +36,21 @@ struct UserDefaultsClientOverrideTests {
         #expect(client.int(forKey: "key") == 7, "An untouched endpoint stopped reaching the store.")
     }
 
+    /// The `Codable` methods are not endpoints, and replacing the two endpoints they
+    /// are built on is what stubs them.
+    ///
+    /// This is the property that makes them methods rather than a missing feature. A
+    /// generic endpoint is impossible — a stored closure cannot be generic — so if the
+    /// `Codable` path did not route through `data` and `setData`, there would be a
+    /// third thing a test had to know to stub, and no way to stub it.
+    @Test("Replacing the data endpoints replaces the Codable path")
+    func replacingDataEndpointsReplacesTheCodablePath() throws {
+        var client = UserDefaultsClient(UserDefaultsTestStore())
+        client.data = { _ in Data("\"stubbed\"".utf8) }
+
+        #expect(try client.decode(String.self, forKey: "never-written") == "stubbed")
+    }
+
     /// The same thing through `withDependencies`, which is how a consumer reaches it.
     ///
     /// Asserted separately from the case above because the assignment goes through
@@ -56,7 +71,7 @@ struct UserDefaultsClientOverrideTests {
         }
     }
 
-    /// `UserDefaultsClient()` is the unimplemented client, and calling an endpoint on
+    /// `UserDefaultsClient()` is the unimplemented client, and calling any endpoint on
     /// it must report.
     ///
     /// The point of the type is that a test which reaches an endpoint it did not think
@@ -65,20 +80,30 @@ struct UserDefaultsClientOverrideTests {
     /// "an issue was reported" into a passing assertion; without the report, the body
     /// records nothing and the case fails.
     ///
-    /// ``UserDefaultsClient/bool`` and ``UserDefaultsClient/string`` are asserted
-    /// because they report by different routes, and only one of the two comes free.
-    /// `string` returns an optional, so `@DependencyClient` generates its reporting
-    /// default; `bool` cannot have one generated and carries a written-out default in
-    /// source, which supersedes the macro's. Written the obvious way, as
-    /// `= { _ in false }`, `bool` reported nothing at all. This case is what stops that
-    /// silence coming back.
+    /// Every endpoint is a row rather than a representative pair, and the widening is
+    /// the point. Two endpoints reach their default by different routes, and only one
+    /// of the two comes free: an endpoint returning an optional or `Void` gets a
+    /// reporting default from `@DependencyClient`, while one returning a non-optional
+    /// cannot have one generated, because the macro has nothing to return after
+    /// reporting, and has to carry a default written out in source. Written the obvious
+    /// way, as `= { _ in false }`, such an endpoint reported nothing at all, and a
+    /// source default supersedes the generated one, so the silence was total and
+    /// invisible.
+    ///
+    /// ``UserDefaultsClient/contains`` is the only endpoint in that position today,
+    /// and it used to be three: ``UserDefaultsClient/bool``,
+    /// ``UserDefaultsClient/int`` and ``UserDefaultsClient/double`` returned
+    /// non-optionals and carried the same duplication until the read surface became
+    /// optional. Listing every endpoint rather than one from each route is what stops
+    /// this case from going quiet the next time an endpoint moves between them, or a
+    /// new one arrives in the position that has to be written out by hand.
     @Test(
-        "An endpoint on the unimplemented client reports an issue",
-        arguments: [UnimplementedEndpoint.bool, .string]
+        "Every endpoint on the unimplemented client reports an issue",
+        arguments: UnimplementedEndpoint.all
     )
     func unimplementedEndpointReportsAnIssue(_ endpoint: UnimplementedEndpoint) {
         withKnownIssue {
-            endpoint.call(on: UserDefaultsClient())
+            endpoint.call(UserDefaultsClient())
         }
     }
 
@@ -86,37 +111,64 @@ struct UserDefaultsClientOverrideTests {
     ///
     /// Without it, a `withKnownIssue` that passed for some unrelated reason would look
     /// the same as the unimplemented default reporting correctly. A client built over a
-    /// real store must report nothing through the same endpoint.
-    @Test("The same endpoint on a real store reports nothing")
-    func anImplementedEndpointReportsNothing() {
-        let client = UserDefaultsClient(UserDefaultsTestStore())
-
-        #expect(client.bool(forKey: "key") == false)
+    /// real store must report nothing through the same endpoints.
+    @Test(
+        "The same endpoint on a real store reports nothing",
+        arguments: UnimplementedEndpoint.all
+    )
+    func anImplementedEndpointReportsNothing(_ endpoint: UnimplementedEndpoint) {
+        endpoint.call(UserDefaultsClient(UserDefaultsTestStore()))
     }
 }
 
-/// The two endpoints whose unimplemented defaults are produced differently.
+/// Every endpoint on the client, so that the unimplemented-default case covers the
+/// whole surface rather than a sample of it.
 ///
-/// A pair rather than all fifteen, because the two routes are what differ: every other
-/// endpoint reaches its default the same way as one of these.
-enum UnimplementedEndpoint: String, CaseIterable, Sendable, CustomTestStringConvertible {
+/// A table of closures rather than an enum with a `switch`, for two reasons. Adding an
+/// endpoint is one line here instead of three in two places, which is what decides
+/// whether the next person adds it at all. And an endpoint that is renamed or retired
+/// stops compiling in the row that calls it, naming that row, rather than in a
+/// nineteen-case `switch` that has to be read to find out which arm broke.
+///
+/// The one gap left is an endpoint added to the client with no row added here. Nothing
+/// makes that a compiler error. It is a smaller gap than the one this replaced, which
+/// covered two endpoints of fifteen.
+struct UnimplementedEndpoint: Sendable, CustomTestStringConvertible {
 
-    /// Reports through a default written out in source.
-    case bool
+    /// The endpoint's name, which is what a failing row is reported as.
+    let name: String
 
-    /// Reports through the default `@DependencyClient` generates.
-    case string
+    /// Calls the endpoint, discarding whatever it returns.
+    let call: @Sendable (UserDefaultsClient) -> Void
 
     var testDescription: String {
-        rawValue
+        name
     }
 
-    func call(on client: UserDefaultsClient) {
-        switch self {
-        case .bool:
-            _ = client.bool(forKey: "key")
-        case .string:
-            _ = client.string(forKey: "key")
-        }
+    private init(_ name: String, _ call: @escaping @Sendable (UserDefaultsClient) -> Void) {
+        self.name = name
+        self.call = call
     }
+
+    static let all: [UnimplementedEndpoint] = [
+        UnimplementedEndpoint("bool") { _ = $0.bool(forKey: "key") },
+        UnimplementedEndpoint("int") { _ = $0.int(forKey: "key") },
+        UnimplementedEndpoint("double") { _ = $0.double(forKey: "key") },
+        UnimplementedEndpoint("string") { _ = $0.string(forKey: "key") },
+        UnimplementedEndpoint("stringArray") { _ = $0.stringArray(forKey: "key") },
+        UnimplementedEndpoint("date") { _ = $0.date(forKey: "key") },
+        UnimplementedEndpoint("data") { _ = $0.data(forKey: "key") },
+        UnimplementedEndpoint("url") { _ = $0.url(forKey: "key") },
+        UnimplementedEndpoint("contains") { _ = $0.contains(key: "key") },
+        UnimplementedEndpoint("setBool") { $0.setBool(true, forKey: "key") },
+        UnimplementedEndpoint("setInt") { $0.setInt(42, forKey: "key") },
+        UnimplementedEndpoint("setDouble") { $0.setDouble(3.5, forKey: "key") },
+        UnimplementedEndpoint("setString") { $0.setString("abc", forKey: "key") },
+        UnimplementedEndpoint("setStringArray") { $0.setStringArray(["a"], forKey: "key") },
+        UnimplementedEndpoint("setDate") { $0.setDate(Date(timeIntervalSince1970: 0), forKey: "key") },
+        UnimplementedEndpoint("setData") { $0.setData(Data([0x01]), forKey: "key") },
+        UnimplementedEndpoint("setURL") { $0.setURL(URL(fileURLWithPath: "/tmp"), forKey: "key") },
+        UnimplementedEndpoint("setPropertyList") { $0.setPropertyList("abc", forKey: "key") },
+        UnimplementedEndpoint("removeValue") { $0.removeValue(forKey: "key") }
+    ]
 }

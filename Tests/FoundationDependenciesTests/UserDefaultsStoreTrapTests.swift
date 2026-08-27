@@ -9,86 +9,106 @@ import Foundation
 import Testing
 import FoundationDependencies
 
-/// The suite the live trap case writes to.
+/// The suite the live cases write to.
 ///
-/// It is deliberately not the shared scratch suite the contract cases use. The case
-/// below is `async`, so it is suspended while the child process runs and other cases
-/// are free to run in the meantime; emptying the shared suite from here could wipe a
-/// contract case's keys underneath it. A name of its own removes the question.
-///
-/// Nothing is ever stored under it either way. The call being made is the one that
-/// ends the process.
+/// It is deliberately not the shared scratch suite the contract cases use. The cases
+/// below are `async`, so each is suspended while its child process runs and other
+/// cases are free to run in the meantime; emptying the shared suite from here could
+/// wipe a contract case's keys underneath it. A name of its own removes the question.
 private let trapSuiteName = "foundation-dependencies.contract.trap"
-
-/// A value `UserDefaults` does not accept.
-///
-/// `URL` is the one a caller is most likely to reach for by accident, because
-/// `UserDefaults` does have a dedicated `set(_:forKey:)` overload that takes one. That
-/// overload is not this endpoint: `setObject` takes `Any?`, which binds to the
-/// property list path, and the property list path rejects a `URL`.
-private func nonPropertyListValue() -> Any {
-    URL(fileURLWithPath: "/tmp")
-}
 
 /// Empties the trap suite.
 private func emptyTrapSuite() {
     UserDefaults(suiteName: trapSuiteName)?.removePersistentDomain(forName: trapSuiteName)
 }
 
-/// What every conformer must do when asked to store a value `UserDefaults` cannot
-/// hold.
+/// That no write can end the process.
 ///
-/// The contract is that the call does not return. Accepting the value would let a test
-/// pass against behaviour production does not have, and returning an error is not
-/// available: no endpoint on the protocol throws.
+/// This suite used to assert the opposite for one endpoint. `setObject` took `Any?`,
+/// and `UserDefaults` raises `NSInvalidArgumentException` when handed a value that is
+/// not a property list, so the contract was that the call did not return: accepting
+/// the value would have let a test pass against behaviour production does not have,
+/// and returning an error was not available because no endpoint throws.
 ///
-/// The assertion is deliberately "the process did not exit successfully" rather than a
-/// particular signal, because the two stores get there by different routes and both
-/// routes are correct. Measured on macOS arm64, Swift 6.2.4: the live store raises
-/// `NSInvalidArgumentException`, which aborts with signal 6, and the test store fails a
-/// `precondition`, which traps with signal 5. Pinning either number would pin an
-/// implementation detail the protocol does not promise, and would fail the other store.
-@Suite("Storing a value UserDefaults cannot hold")
+/// The endpoint is gone. ``PropertyListValue`` has no case for a value `UserDefaults`
+/// cannot hold, so the argument that used to end the process can no longer be written,
+/// and every other setter takes a concrete storable type. What is left to check is the
+/// consequence: that the whole write surface, exercised against a real suite, comes
+/// back. `everyWriteLeavesTheProcessAlive` is the old control case widened from one
+/// endpoint to all of them, and it is the case that would redden if a trapping path
+/// were reintroduced.
+@Suite("Writes and the process")
 struct UserDefaultsStoreTrapTests {
 
-    @Test("The live store ends the process")
-    func liveStoreEndsTheProcess() async {
-        await #expect(processExitsWith: .failure) {
+    @Test("Every write against a live store leaves the process alive")
+    func everyWriteLeavesTheProcessAlive() async {
+        await #expect(processExitsWith: .success) {
             guard let store = UserDefaultsLiveStore(suiteName: trapSuiteName) else {
-                return
+                // Reported as a failure by `theTrapSuiteNameIsUsable` below rather
+                // than swallowed here, where the exit status is the only channel.
+                exit(EXIT_FAILURE)
             }
-            store.setObject(nonPropertyListValue(), forKey: "key")
+
+            store.setBool(true, forKey: "flag")
+            store.setInt(42, forKey: "number")
+            store.setDouble(3.5, forKey: "fraction")
+            store.setString("abc", forKey: "text")
+            store.setStringArray(["a", "b"], forKey: "list")
+            store.setDate(Date(timeIntervalSince1970: 0), forKey: "moment")
+            store.setData(Data([0x00, 0xFF]), forKey: "blob")
+            store.setURL(URL(fileURLWithPath: "/tmp/a b.txt"), forKey: "location")
+            store.setPropertyList(
+                ["counts": [1, 2], "names": ["a"], "seen": true, "when": .date(.now)],
+                forKey: "nested"
+            )
+            store.removeValue(forKey: "flag")
         }
         emptyTrapSuite()
     }
 
-    @Test("The test store ends the process")
-    func testStoreEndsTheProcess() async {
-        await #expect(processExitsWith: .failure) {
+    /// The same against the in-memory store, which reaches the writes by a different
+    /// route: it validated its argument against `PropertyListSerialization` and failed
+    /// a `precondition` where the live store let `UserDefaults` raise. Both routes are
+    /// gone, and both are checked.
+    @Test("Every write against the test store leaves the process alive")
+    func everyWriteAgainstTheTestStoreLeavesTheProcessAlive() async {
+        await #expect(processExitsWith: .success) {
             let store = UserDefaultsTestStore()
-            store.setObject(nonPropertyListValue(), forKey: "key")
+
+            store.setBool(true, forKey: "flag")
+            store.setInt(42, forKey: "number")
+            store.setDouble(3.5, forKey: "fraction")
+            store.setString("abc", forKey: "text")
+            store.setStringArray(["a", "b"], forKey: "list")
+            store.setDate(Date(timeIntervalSince1970: 0), forKey: "moment")
+            store.setData(Data([0x00, 0xFF]), forKey: "blob")
+            store.setURL(URL(fileURLWithPath: "/tmp/a b.txt"), forKey: "location")
+            store.setPropertyList(
+                ["counts": [1, 2], "names": ["a"], "seen": true, "when": .date(.now)],
+                forKey: "nested"
+            )
+            store.removeValue(forKey: "flag")
         }
     }
 
-    /// The control for the two cases above.
+    /// The control for the two cases above, and the reason they are worth running.
     ///
-    /// Without it, a body that crashed for some unrelated reason, or a harness that
-    /// reported failure whatever happened, would look exactly like a store correctly
-    /// refusing the value. This runs the same endpoint with a value `UserDefaults` does
-    /// accept and requires the process to survive, so a failure result from the other
-    /// two cases means something.
-    @Test("A property list value through the same endpoint leaves the process alive")
-    func aValidValueLeavesTheProcessAlive() async {
-        await #expect(processExitsWith: .success) {
-            let store = UserDefaultsTestStore()
-            store.setObject("abc", forKey: "key")
+    /// A `.success` expectation is only evidence if the harness can report anything
+    /// else. Without this case, an exit test that had stopped observing the child
+    /// altogether would pass both cases above and read exactly like a package with no
+    /// trapping write in it. This one ends the process on purpose and requires the
+    /// failure to be seen.
+    @Test("A body that does end the process is reported as a failure")
+    func theExitHarnessCanReportAFailure() async {
+        await #expect(processExitsWith: .failure) {
+            exit(EXIT_FAILURE)
         }
     }
 
     /// The live case above is only meaningful if the store it tries to build can be
-    /// built. If Foundation refused this suite name, that body would return early and
-    /// exit successfully, and the failure would read as "the store did not trap" rather
-    /// than "the store was never made".
+    /// built. If Foundation refused this suite name, that body would exit with a
+    /// failure and the case would read as "a write ended the process" rather than "the
+    /// store was never made".
     @Test("The suite name the live case uses is one Foundation accepts")
     func theTrapSuiteNameIsUsable() {
         #expect(UserDefaultsLiveStore(suiteName: trapSuiteName) != nil)

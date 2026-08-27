@@ -30,7 +30,7 @@ Comprehensive documentation is available via Swift Package Index:
 | Client                     | Description |
 |---------------------------|-------------|
 | `mainBundleClient`        | A wrapper around `Bundle`, exposing APIs for loading resources via a `BundleResourceProvider` abstraction. |
-| `userDefaultsClient`      | A testable interface for `UserDefaults`, built as a struct of closures with a method per endpoint. Ideal for dependency injection and isolating persistent state in tests. **Your app must register a live store at launch (see below).** |
+| `userDefaultsClient`      | A testable interface for `UserDefaults`, built as a struct of closures with a method per endpoint. Every read is optional, so a key holding nothing is distinguishable from a key holding `false` or `0`. Ideal for dependency injection and isolating persistent state in tests. **Your app must register a live store at launch (see below).** |
 | `fileSystemClient`        | A robust file system interface supporting operations such as reading, writing, copying, moving, and deleting files or directories. Suitable for sandboxed storage and fully mockable for tests. |
 | `fileSystemResourceClient`| A factory for creating typed file stores that conform to `FileSystemOperations`. Supports saving and loading `Codable` values and binary data into specific folders and subfolders, without exposing raw file system APIs. |
 | `loggerClient` | An interface to os.Logger, auto-populated with the MainBundle bundle identifier (even if you're logging outside the main bundle). |
@@ -104,6 +104,37 @@ extension UserDefaultsClient: @retroactive DependencyKey {
 ```
 
 Prefer `prepareDependencies`. A stored property has nowhere sensible to handle a failable initialiser, so this route is awkward for anything but `standard`. A retroactive conformance is also declared in your module while belonging to this package's type, so if `FoundationDependencies` ever declares `DependencyKey` itself, every consumer holding a copy of it hits a duplicate conformance and stops compiling.
+
+---
+
+## 📖 Reading and Writing Values
+
+Every reader returns an optional, and `??` is where a default lives:
+
+```swift
+@Dependency(\.userDefaultsClient) var userDefaults
+
+let launches = userDefaults.int(forKey: "launches") ?? 0
+userDefaults.setInt(launches + 1, forKey: "launches")
+
+if userDefaults.bool(forKey: "hasOnboarded") == nil {
+    userDefaults.setBool(false, forKey: "hasOnboarded")
+}
+```
+
+`nil` from `bool`, `int` or `double` means the key holds nothing, and nothing else. A key holding a value always has a reading through those three, because `UserDefaults` coerces rather than refusing, so a stored `Date` still reads as `false` and `0` exactly as it does in production. The other readers return `nil` for a key that holds nothing *and* for a key whose value has no reading of that type — a stored `Date` has no `string` reading — and `contains(key:)` is what separates those two cases.
+
+| Endpoint | Reads |
+|---|---|
+| `bool` / `int` / `double` | The coerced value, or `nil` when the key holds nothing |
+| `string` / `stringArray` / `date` / `data` | The value, or `nil` when there is no reading of that type |
+| `url` | The stored text parsed as a URL, or `nil` unless it has a scheme |
+| `contains(key:)` | Whether the key holds anything at all |
+| `decode(_:forKey:)` | A `Codable` value from stored JSON, throwing when the data does not decode |
+
+Writing mirrors the readers: `setBool`, `setInt`, `setDouble`, `setString`, `setStringArray`, `setDate`, `setData`, `setURL`, `encode(_:forKey:)`, and `setPropertyList` for a mixed array or a nested dictionary. Every setter that takes an optional removes the key when handed `nil`, as does `removeValue(forKey:)`.
+
+See <doc:UserDefaultsClient> for the `Codable` and property list paths in full, and for what a URL is stored as and why it is not what `UserDefaults.url(forKey:)` reads.
 
 ---
 

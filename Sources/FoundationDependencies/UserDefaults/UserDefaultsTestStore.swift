@@ -42,20 +42,18 @@ import Foundation
 /// than taken from the prose documentation, which describes the coercions only in
 /// general terms.
 ///
-/// Writes are validated the same way. `UserDefaults` raises
-/// `NSInvalidArgumentException` when asked to store a value that is not a property
-/// list type, so ``setObject`` traps on the same input rather than accepting it
-/// into the dictionary.
+/// Writes need no validation. Every setter takes a type `UserDefaults` can hold,
+/// and the one that accepts a heterogeneous value takes a ``PropertyListValue``,
+/// which has no case for anything else. An earlier `setObject` took `Any?` and had
+/// to check its argument against `PropertyListSerialization` and trap, reproducing
+/// the `NSInvalidArgumentException` live `UserDefaults` raises; the check went when
+/// the type made the input unrepresentable.
 ///
-/// ## Known divergence
-///
-/// ``object`` returns the value as it was written, whereas live `UserDefaults`
-/// returns the Foundation counterpart it normalised the value into on write. A
-/// value stored through ``setInt`` therefore reads back from ``object`` as an `Int`
-/// here and as an `NSNumber` in production, which matters only to a test that casts
-/// the result to a different type than it stored: `object(key) as? Bool` finds a
-/// `Bool` in production for a stored `1` and finds nothing here. The typed readers
-/// are unaffected, and are the endpoints a test should prefer.
+/// There is no longer a divergence to know about. The endpoint that had one was
+/// `object`, which returned the value as written here and the Foundation counterpart
+/// production had normalised it into, so a stored `1` was an `Int` here and an
+/// `NSNumber` there. It is retired: ``contains(key:)`` answers the only question it
+/// was reliably good for, and the typed readers answer the rest.
 ///
 /// ## Thread safety
 ///
@@ -82,9 +80,11 @@ public final class UserDefaultsTestStore: UserDefaultsStore, @unchecked Sendable
     /// The backing store.
     ///
     /// Holds each value exactly as it was written, without the normalisation into
-    /// Foundation types that live `UserDefaults` performs on the way in. A value
-    /// written through ``setInt`` is still a Swift `Int` when it comes back out of
-    /// ``object``, which is the divergence described on the type.
+    /// Foundation types that live `UserDefaults` performs on the way in, so a value
+    /// written through ``setInt(_:forKey:)`` is still a Swift `Int` in here. That is
+    /// invisible from outside now that no endpoint returns the stored value itself:
+    /// the coercions in `LiveUserDefaultsSemantics` read a Swift `Int` and the
+    /// `NSNumber` production holds identically, and every reader goes through them.
     ///
     /// Only ever read through ``value(forKey:)`` and written through
     /// ``write(_:forKey:)``, both of which hold ``lock``. See the thread safety note.
@@ -103,52 +103,47 @@ public final class UserDefaultsTestStore: UserDefaultsStore, @unchecked Sendable
 
     // MARK: - Reading Values
 
-    /// Retrieves a Boolean value for the specified key.
+    /// Retrieves a Boolean value for the specified key, or `nil` if the key holds
+    /// nothing.
     ///
-    /// Coerces the stored value as live `UserDefaults` does. See
+    /// Coerces a stored value as live `UserDefaults` does. See
     /// `LiveUserDefaultsSemantics.boolean(from:)` for the rules.
-    public func bool(forKey key: String) -> Bool {
-        LiveUserDefaultsSemantics.boolean(from: value(forKey: key))
+    public func bool(forKey key: String) -> Bool? {
+        value(forKey: key).map(LiveUserDefaultsSemantics.boolean(from:))
     }
 
-    /// Retrieves an integer value for the specified key.
+    /// Retrieves an integer value for the specified key, or `nil` if the key holds
+    /// nothing.
     ///
-    /// Coerces the stored value as live `UserDefaults` does. See
+    /// Coerces a stored value as live `UserDefaults` does. See
     /// `LiveUserDefaultsSemantics.integer(from:)` for the rules.
-    public func int(forKey key: String) -> Int {
-        LiveUserDefaultsSemantics.integer(from: value(forKey: key))
+    public func int(forKey key: String) -> Int? {
+        value(forKey: key).map(LiveUserDefaultsSemantics.integer(from:))
     }
 
-    /// Retrieves a double value for the specified key.
+    /// Retrieves a double value for the specified key, or `nil` if the key holds
+    /// nothing.
     ///
-    /// Coerces the stored value as live `UserDefaults` does. See
+    /// Coerces a stored value as live `UserDefaults` does. See
     /// `LiveUserDefaultsSemantics.double(from:)` for the rules.
-    public func double(forKey key: String) -> Double {
-        LiveUserDefaultsSemantics.double(from: value(forKey: key))
+    public func double(forKey key: String) -> Double? {
+        value(forKey: key).map(LiveUserDefaultsSemantics.double(from:))
     }
 
     /// Retrieves a string value for the specified key.
     ///
-    /// Coerces the stored value as live `UserDefaults` does. See
+    /// Coerces a stored value as live `UserDefaults` does. See
     /// `LiveUserDefaultsSemantics.string(from:)` for the rules.
     public func string(forKey key: String) -> String? {
-        LiveUserDefaultsSemantics.string(from: value(forKey: key))
+        value(forKey: key).flatMap(LiveUserDefaultsSemantics.string(from:))
     }
 
     /// Retrieves an array of strings for the specified key.
     ///
-    /// Coerces the stored value as live `UserDefaults` does. See
+    /// Coerces a stored value as live `UserDefaults` does. See
     /// `LiveUserDefaultsSemantics.stringArray(from:)` for the rules.
     public func stringArray(forKey key: String) -> [String]? {
-        LiveUserDefaultsSemantics.stringArray(from: value(forKey: key))
-    }
-
-    /// Retrieves the stored value for the specified key, or `nil` if there is none.
-    ///
-    /// Unlike the typed readers this performs no coercion. See the known divergence
-    /// note on the type for how the returned value differs from production.
-    public func object(forKey key: String) -> Any? {
-        value(forKey: key)
+        value(forKey: key).flatMap(LiveUserDefaultsSemantics.stringArray(from:))
     }
 
     /// Retrieves a `Date` value for the specified key.
@@ -157,6 +152,30 @@ public final class UserDefaultsTestStore: UserDefaultsStore, @unchecked Sendable
     /// is not interpreted as a time interval, matching production.
     public func date(forKey key: String) -> Date? {
         value(forKey: key) as? Date
+    }
+
+    /// Retrieves a `Data` value for the specified key.
+    ///
+    /// Returns `nil` when the stored value is anything other than data. A string is
+    /// not decoded into its bytes, matching production.
+    public func data(forKey key: String) -> Data? {
+        value(forKey: key) as? Data
+    }
+
+    /// Retrieves a `URL` value for the specified key.
+    ///
+    /// Reads this store's own text and parses it by the same rule the live store
+    /// uses, so the two agree for the same reason ``string(forKey:)`` does. See
+    /// `StoredURL`.
+    public func url(forKey key: String) -> URL? {
+        string(forKey: key).flatMap(StoredURL.url(from:))
+    }
+
+    // MARK: - Presence
+
+    /// Reports whether the specified key holds a value.
+    public func contains(key: String) -> Bool {
+        value(forKey: key) != nil
     }
 
     // MARK: - Writing Values
@@ -188,39 +207,41 @@ public final class UserDefaultsTestStore: UserDefaultsStore, @unchecked Sendable
         write(value, forKey: key)
     }
 
-    /// Stores a raw value for the specified key, or removes the key when `value` is
-    /// `nil`.
-    ///
-    /// - Precondition: `value` is a property list value. `UserDefaults` raises
-    ///   `NSInvalidArgumentException` for anything else, so accepting it here would
-    ///   let a test pass against behaviour production does not have. Note that this
-    ///   rejects `URL`, which production also rejects through this endpoint even
-    ///   though its dedicated `set(_:forKey:)` overload for URLs accepts one.
-    public func setObject(_ value: Any?, forKey key: String) {
-        if let value {
-            precondition(
-                PropertyListSerialization.propertyList(value, isValidFor: .binary),
-                """
-                Cannot store a value of type \(type(of: value)) for key '\(key)'. \
-                UserDefaults accepts only property list values: String, a number, \
-                Bool, Date, Data, or an Array or Dictionary of those with String \
-                keys. Live UserDefaults raises NSInvalidArgumentException here.
-                """
-            )
-        }
-        write(value, forKey: key)
-    }
-
     /// Stores a `Date` value for the specified key, or removes the key when `value`
     /// is `nil`.
     public func setDate(_ value: Date?, forKey key: String) {
         write(value, forKey: key)
     }
 
+    /// Stores a `Data` value for the specified key, or removes the key when `value`
+    /// is `nil`.
+    public func setData(_ value: Data?, forKey key: String) {
+        write(value, forKey: key)
+    }
+
+    /// Stores a `URL` value for the specified key, or removes the key when `value`
+    /// is `nil`.
+    ///
+    /// Stored as text, exactly as the live store stores it. See `StoredURL`.
+    public func setURL(_ value: URL?, forKey key: String) {
+        setString(value.map(StoredURL.text(for:)), forKey: key)
+    }
+
+    /// Stores a property list value for the specified key, or removes the key when
+    /// `value` is `nil`.
+    ///
+    /// The value is converted to its Foundation shape on the way in, so a nested
+    /// array or dictionary is held as the array or dictionary the live store would
+    /// hold rather than as a ``PropertyListValue``, and the coercions above read it
+    /// the same way in both stores.
+    public func setPropertyList(_ value: PropertyListValue?, forKey key: String) {
+        write(value?.foundationValue, forKey: key)
+    }
+
     // MARK: - Deletion
 
     /// Removes the value associated with the specified key.
-    public func removeObject(forKey key: String) {
+    public func removeValue(forKey key: String) {
         write(nil, forKey: key)
     }
 

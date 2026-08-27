@@ -138,21 +138,15 @@ struct UserDefaultsNumberCoercionTests {
 
     /// A value with no numeric reading at all is zero through both readers, rather
     /// than an error or a hash of the bytes.
+    ///
+    /// Zero and not `nil`. `nil` from these two readers is reserved for a key that
+    /// holds nothing, and a date, an array or a blob is something. That is the rule
+    /// `expectAbsent` and `expectScalarReadings` state from the other direction.
     @Test("A value that is not a number reads as zero",
           arguments: StoreKind.allCases, SeededValue.nonNumericCases)
     func aNonNumericValueReadsAsZero(kind: StoreKind, seeded: SeededValue) throws {
         try withStore(kind) { store in
-            seeded.write(into: store, key: "key")
-
-            #expect(store.int(forKey: "key") == 0)
-            #expect(store.double(forKey: "key") == 0)
-        }
-    }
-
-    @Test("Stored data reads as zero", arguments: StoreKind.allCases)
-    func dataReadsAsZero(kind: StoreKind) throws {
-        try withStore(kind) { store in
-            store.setObject(Data([1, 2, 3]), forKey: "key")
+            try seeded.write(into: store, key: "key")
 
             #expect(store.int(forKey: "key") == 0)
             #expect(store.double(forKey: "key") == 0)

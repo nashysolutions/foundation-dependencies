@@ -86,19 +86,36 @@ public struct UserDefaultsLiveStore: UserDefaultsStore, @unchecked Sendable {
 
     // MARK: - Reading Values
 
-    /// Retrieves a Boolean value for the specified key.
-    public func bool(forKey key: String) -> Bool {
-        userDefaults.bool(forKey: key)
+    /// Retrieves a Boolean value for the specified key, or `nil` if the key holds
+    /// nothing.
+    ///
+    /// The presence check is a second lookup rather than something `bool(forKey:)`
+    /// can report, because that endpoint answers `false` for a key that holds `false`
+    /// and for a key that holds nothing alike. Both lookups search the same domain
+    /// list, registered defaults included, so they agree about what is there.
+    public func bool(forKey key: String) -> Bool? {
+        guard contains(key: key) else {
+            return nil
+        }
+        return userDefaults.bool(forKey: key)
     }
 
-    /// Retrieves an integer value for the specified key.
-    public func int(forKey key: String) -> Int {
-        userDefaults.integer(forKey: key)
+    /// Retrieves an integer value for the specified key, or `nil` if the key holds
+    /// nothing.
+    public func int(forKey key: String) -> Int? {
+        guard contains(key: key) else {
+            return nil
+        }
+        return userDefaults.integer(forKey: key)
     }
 
-    /// Retrieves a double value for the specified key.
-    public func double(forKey key: String) -> Double {
-        userDefaults.double(forKey: key)
+    /// Retrieves a double value for the specified key, or `nil` if the key holds
+    /// nothing.
+    public func double(forKey key: String) -> Double? {
+        guard contains(key: key) else {
+            return nil
+        }
+        return userDefaults.double(forKey: key)
     }
 
     /// Retrieves a string value for the specified key.
@@ -111,14 +128,34 @@ public struct UserDefaultsLiveStore: UserDefaultsStore, @unchecked Sendable {
         userDefaults.stringArray(forKey: key)
     }
 
-    /// Retrieves a raw object for the specified key.
-    public func object(forKey key: String) -> Any? {
-        userDefaults.object(forKey: key)
-    }
-
     /// Retrieves a `Date` value for the specified key.
     public func date(forKey key: String) -> Date? {
         userDefaults.object(forKey: key) as? Date
+    }
+
+    /// Retrieves a `Data` value for the specified key.
+    public func data(forKey key: String) -> Data? {
+        userDefaults.data(forKey: key)
+    }
+
+    /// Retrieves a `URL` value for the specified key.
+    ///
+    /// Reads the stored text and parses it. `UserDefaults.url(forKey:)` is
+    /// deliberately not called; `StoredURL` records what it does instead and why this
+    /// package does not want it.
+    public func url(forKey key: String) -> URL? {
+        string(forKey: key).flatMap(StoredURL.url(from:))
+    }
+
+    // MARK: - Presence
+
+    /// Reports whether the specified key holds a value.
+    ///
+    /// The one reading that separates a key holding nothing from a key holding a
+    /// value with no reading of the type asked for. A stored `Date` is `nil` through
+    /// ``string(forKey:)`` and present through this.
+    public func contains(key: String) -> Bool {
+        userDefaults.object(forKey: key) != nil
     }
 
     // MARK: - Writing Values
@@ -138,30 +175,44 @@ public struct UserDefaultsLiveStore: UserDefaultsStore, @unchecked Sendable {
         userDefaults.set(value, forKey: key)
     }
 
-    /// Stores a string value for the specified key.
+    /// Stores a string value for the specified key, or removes it when `nil`.
     public func setString(_ value: String?, forKey key: String) {
         userDefaults.set(value, forKey: key)
     }
 
-    /// Stores an array of strings for the specified key.
+    /// Stores an array of strings for the specified key, or removes it when `nil`.
     public func setStringArray(_ value: [String]?, forKey key: String) {
         userDefaults.set(value, forKey: key)
     }
 
-    /// Stores a raw object for the specified key.
-    public func setObject(_ value: Any?, forKey key: String) {
+    /// Stores a `Date` value for the specified key, or removes it when `nil`.
+    public func setDate(_ value: Date?, forKey key: String) {
         userDefaults.set(value, forKey: key)
     }
 
-    /// Stores a `Date` value for the specified key.
-    public func setDate(_ value: Date?, forKey key: String) {
+    /// Stores a `Data` value for the specified key, or removes it when `nil`.
+    public func setData(_ value: Data?, forKey key: String) {
         userDefaults.set(value, forKey: key)
+    }
+
+    /// Stores a `URL` value for the specified key, or removes it when `nil`.
+    ///
+    /// Stored as text, so the value is legible in the `plist` and reads back through
+    /// ``string(forKey:)`` as well. See `StoredURL` for why this is not
+    /// `UserDefaults.set(_:forKey:)` with a URL.
+    public func setURL(_ value: URL?, forKey key: String) {
+        setString(value.map(StoredURL.text(for:)), forKey: key)
+    }
+
+    /// Stores a property list value for the specified key, or removes it when `nil`.
+    public func setPropertyList(_ value: PropertyListValue?, forKey key: String) {
+        userDefaults.set(value?.foundationValue, forKey: key)
     }
 
     // MARK: - Deletion
 
     /// Removes the value associated with the specified key.
-    public func removeObject(forKey key: String) {
+    public func removeValue(forKey key: String) {
         userDefaults.removeObject(forKey: key)
     }
 }
