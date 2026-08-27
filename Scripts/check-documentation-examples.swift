@@ -20,8 +20,9 @@
 //
 //      swift Scripts/check-documentation-examples.swift
 //
-//  Exit status is 0 when every fence either type-checks cleanly or is recorded
-//  below as deliberately illustrative, and 1 otherwise.
+//  Exit status is 0 when every fence clears the standard recorded for it, and
+//  1 otherwise. There are two standards and every fence is held to one of
+//  them; none is skipped.
 //
 //  What "cleanly" means, and why
 //  -----------------------------
@@ -45,6 +46,45 @@
 //  `-Wwarning no-usage` is in any case still rejected as an unknown warning
 //  group by the 6.2.4 toolchain this package builds with, so the flag does
 //  not exist even in its too-coarse form.
+//
+//  The two standards, and why there is no third
+//  --------------------------------------------
+//  Almost every fence is type-checked, which is the standard above. Two are
+//  not, because they are fragments of Swift rather than Swift: a
+//  `.product(name:package:)` entry a reader pastes into a `Package.swift`
+//  target, and a leading-dot `.environment(...)` modifier quoted as an
+//  analogy. Neither has a receiver or a contextual type, so neither can be
+//  given one without writing a different snippet than the article means.
+//
+//  Those two are **parsed**, not type-checked, and that is issue #40. Until
+//  it, they were recorded as exempt and not compiled at all — not compiled
+//  weakly, not compiled and forgiven, but skipped, so the guarantee attached
+//  to them was "nobody looked". Parsing is a weak check and is stated here as
+//  one: it catches an unbalanced delimiter, a mistyped label punctuation, a
+//  stray character, and nothing else. It does not know that
+//  `FoundationDependencies` is a real product name or that `.environment`
+//  is a real modifier. It is worth having only because the alternative it
+//  replaced was nothing, and because it cannot be confused for the other
+//  standard: a parse-checked fence is reported as `parsed`, never as `ok`.
+//
+//  There is deliberately no third tier for "recorded and unchecked". Issue #40
+//  measured the other two exemptions that used to sit there and found both
+//  claims false. The `withDependencies { ... } operation:` fence in
+//  `ScopingDependencies.md` was exempt for an elision, and de-eliding it
+//  compiles — the same finding #36 made about the fence it removed. The
+//  `XCTestCase.invokeTest()` fence in `TestingAndOverrides.md` was exempt on
+//  the recorded ground that "this package's own suite is Swift Testing, so
+//  there is no such class here to compile it against", and that reason does
+//  not survive: the class does not have to come from this package's suite. It
+//  comes from XCTest, which is importable on macOS given the framework search
+//  path added below, and the fence type-checks silently once it is written out
+//  with the test case it is a method of. Both articles are better for the
+//  change: one was withholding the override it is about, the other was showing
+//  an `override` with nothing to override.
+//
+//  If a fence ever genuinely cannot be parsed either, the honest move is to
+//  add the tier back deliberately and say on it what it is worth, rather than
+//  to widen the parse tier into a place to put things.
 //
 //  Which language mode, and why it is not the package's own
 //  --------------------------------------------------------
@@ -120,10 +160,10 @@
 //  Issue #44 is the shape of the damage here. The opener used to be matched
 //  with `trimmed == "```swift"`, an exact string comparison, so a fence opened
 //  with ```Swift or with ```swift title="Registering" was invisible: never
-//  compiled, never exempt, and — the part that matters — never reported. A
-//  planted fence containing `let broken: Int = "not an Int"` left the counts at
-//  exactly their baseline and exited 0, so the output of a run with a hole in
-//  it was byte-identical to the output of a clean one.
+//  compiled, never listed as parse-only, and — the part that matters — never
+//  reported. A planted fence containing `let broken: Int = "not an Int"` left
+//  the counts at exactly their baseline and exited 0, so the output of a run
+//  with a hole in it was byte-identical to the output of a clean one.
 //
 //  Two changes, and the second is the durable one:
 //
@@ -136,7 +176,7 @@
 //    closes the shapes someone thought of; ```swiftui or ```swift-output would
 //    have gone the same way as ```Swift did. So an opener whose language merely
 //    *contains* `swift` is reported with its file and line and fails the run,
-//    which is the standard the exemption list already meets — an exemption that
+//    which is the standard the parse-only list already meets — an entry that
 //    matches nothing prints and exits 1 rather than quietly covering less than
 //    it used to. Being red is the correct state for such a fence: either it is
 //    Swift and this gate is not checking it, or it is not Swift and is
@@ -167,77 +207,58 @@ import Foundation
 import FoundationDependencies
 """
 
-/// A fence that is deliberately not compilable, together with the reason.
+/// A fence this script cannot type-check, together with the reason and the
+/// weaker standard it is held to instead: it must parse.
 ///
 /// Matching is by content, not by position, which has two consequences worth
-/// relying on. Reordering or inserting fences cannot silently shift an
-/// exemption onto the wrong snippet. And editing an exempt fence changes its
-/// content, so the exemption stops matching and the fence is compiled again —
-/// an exemption granted once cannot quietly cover something else later.
+/// relying on. Reordering or inserting fences cannot silently shift an entry
+/// onto the wrong snippet. And editing a listed fence changes its content, so
+/// the entry stops matching and the fence is type-checked again — a weaker
+/// standard granted once cannot quietly cover something else later.
 ///
-/// An exemption that matches no fence is an error, so this list cannot rot
-/// into a set of stale entries nobody has read.
-struct Exemption {
+/// An entry that matches no fence is an error, so this list cannot rot into a
+/// set of stale entries nobody has read.
+///
+/// Adding an entry here is a decision to check a fence less. Two questions
+/// have to be answered before it is the right one, and issue #40 is the record
+/// of both being answered wrongly for two of the four entries this list used
+/// to hold. First: is the fence uncompilable, or merely elided? An elision is
+/// not a reason — de-eliding is usually the better article as well as the
+/// checkable one. Second: is the stated obstacle actually in the way? "There
+/// is no class here to compile it against" was true of this package's own test
+/// suite and irrelevant, because the class comes from XCTest.
+struct SyntaxOnlyFence {
 
     let reason: String
     let code: String
 }
 
-let exemptions: [Exemption] = [
+let syntaxOnlyFences: [SyntaxOnlyFence] = [
 
-    Exemption(
+    SyntaxOnlyFence(
         reason: """
             A `Package.swift` dependency fragment, not source for a target. It \
-            is checked instead by being the exact line a consumer writes, and \
-            SwiftPM resolves it every time this package is depended upon.
+            is an element of a target's `dependencies` array, so it has no \
+            contextual type anywhere a fence could put it. Parsing checks its \
+            shape; the product and package names it asserts are checked \
+            instead by being the exact line a consumer writes, and SwiftPM \
+            resolves them every time this package is depended upon.
             """,
         code: #"""
             .product(name: "FoundationDependencies", package: "foundation-dependencies")
             """#
     ),
 
-    Exemption(
-        reason: """
-            Carries a deliberate elision, and is a statement of the problem \
-            rather than advice: the second line is labelled as the mistake the \
-            article goes on to correct.
-            """,
-        code: """
-            let itemA = withDependencies { ... } operation: { ItemA() }
-            let itemB = ItemB() // Will use testValue unexpectedly
-            """
-    ),
-
-    Exemption(
+    SyntaxOnlyFence(
         reason: """
             A single SwiftUI modifier quoted as an analogy for dependency \
             scoping. A leading-dot expression has no meaning without the \
-            receiver it is chained onto, so there is no context in which it \
-            could be compiled.
+            receiver it is chained onto, and supplying one would mean quoting \
+            a different thing than the sentence above it quotes. Parsing \
+            checks its shape and nothing about SwiftUI.
             """,
         code: """
             .environment(\\.colorScheme, .dark)
-            """
-    ),
-
-    Exemption(
-        reason: """
-            The body of an `XCTestCase.invokeTest()` override. `override` is \
-            only legal inside a class that inherits the method, and this \
-            package's own suite is Swift Testing, so there is no such class \
-            here to compile it against.
-            """,
-        code: """
-            override func invokeTest() {
-                var bundle = MainBundleClientKey.testValue
-                bundle.extractName = { "Test App" }
-
-                withDependencies {
-                    $0.mainBundleClient = bundle
-                } operation: {
-                    super.invokeTest()
-                }
-            }
             """
     )
 ]
@@ -646,6 +667,21 @@ struct TypeCheckEnvironment {
     let stubsPath: String
     let modulePath: String
     let sdkPath: String
+
+    /// The platform's `Developer/Library/Frameworks`, which is where XCTest
+    /// lives and the only reason this is here.
+    ///
+    /// XCTest is not in the macOS SDK and is not on any default search path,
+    /// so `import XCTest` fails with `no such module` without it. That failure
+    /// is what the exemption removed in issue #40 had been reading as "this
+    /// fence cannot be compiled": the article's `invokeTest()` override needs
+    /// a class to override into, and XCTest is where that class comes from.
+    ///
+    /// Adding the directory does not weaken anything. It contains Apple's test
+    /// frameworks and nothing else, so no name a fence resolves through it is
+    /// a name this package was supposed to export — which is the one way a
+    /// search path could hide the defect this gate looks for.
+    let frameworkPath: String
     let target: String
 }
 
@@ -728,7 +764,7 @@ func isArtefactOfTheWrapping(_ diagnostic: String) -> Bool {
 /// path. The compiler repeats the same text on the caret continuation lines,
 /// so matching every occurrence reads one warning as several — the same
 /// over-counting the strict-concurrency job in `ci.yml` guards against. That
-/// same path prefix is also what stops a fence forging an exemption: a fence
+/// same path prefix is also what stops a fence forging a tolerance: a fence
 /// whose own source quotes a tolerated message appears only on a continuation
 /// line, which carries no path and is filtered out before the shape is read.
 ///
@@ -818,7 +854,8 @@ func typeCheck(
             "-swift-version", "6",
             "-target", environment.target,
             "-sdk", environment.sdkPath,
-            "-I", environment.modulePath
+            "-I", environment.modulePath,
+            "-F", environment.frameworkPath
         ] + files
     )
 
@@ -829,6 +866,51 @@ func typeCheck(
             in: result.output,
             ownedPrefixes: [directory, environment.stubsPath]
         )
+    )
+}
+
+/// Parses a fence without type-checking it, which is everything this script
+/// can say about a fence that is a fragment of Swift rather than Swift.
+///
+/// Nothing else is compiled alongside it. Parsing resolves no names, so the
+/// stubs and the supporting fences would change nothing, and leaving them out
+/// keeps the reported diagnostics pointing at the fence itself.
+///
+/// There is only one shape here, where the type-check has two. The type-check
+/// retries an excerpt inside a function because statements are not allowed at
+/// the top level, and that is a semantic rule the parser does not enforce: at
+/// `-parse`, `let x = ...` is accepted at file scope and rejected inside a
+/// function in exactly the same way, so the retry could never turn a parse
+/// failure into a pass. Measured on 6.2.4 before this was written, and left
+/// out rather than carried as a branch nothing can exercise.
+func parseCheck(_ fence: Fence, in environment: TypeCheckEnvironment) -> TypeCheckOutcome {
+    let directory = NSTemporaryDirectory()
+        + "fd-doc-examples/"
+        + UUID().uuidString
+    try? FileManager.default.createDirectory(
+        atPath: directory,
+        withIntermediateDirectories: true
+    )
+    defer { try? FileManager.default.removeItem(atPath: directory) }
+
+    let path = directory + "/Fragment.swift"
+    try? fence.code.write(toFile: path, atomically: true, encoding: .utf8)
+
+    let result = run(
+        "swiftc",
+        [
+            "-parse",
+            "-swift-version", "6",
+            "-target", environment.target,
+            "-sdk", environment.sdkPath,
+            path
+        ]
+    )
+
+    return TypeCheckOutcome(
+        status: result.status,
+        output: result.output,
+        warnings: gatedWarnings(in: result.output, ownedPrefixes: [directory])
     )
 }
 
@@ -867,6 +949,24 @@ guard let modulePath = moduleSearchPath(under: binaryPath) else {
 let sdkResult = run("xcrun", ["--show-sdk-path", "--sdk", "macosx"])
 let sdkPath = sdkResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
 
+// XCTest is not in the SDK. See `TypeCheckEnvironment.frameworkPath` for why
+// this is needed and why it does not weaken the gate. It is checked rather
+// than assumed because without it the only fence that imports XCTest fails
+// with `no such module`, which reads as a defect in the article and is not
+// one — exactly the misreading issue #40 was filed to correct.
+let platformResult = run("xcrun", ["--show-sdk-platform-path", "--sdk", "macosx"])
+let frameworkPath = platformResult.output
+    .trimmingCharacters(in: .whitespacesAndNewlines)
+    + "/Developer/Library/Frameworks"
+
+guard FileManager.default.fileExists(atPath: frameworkPath + "/XCTest.framework") else {
+    print("error: no XCTest.framework under \(frameworkPath).")
+    print("A fence imports XCTest, and without this search path it would fail")
+    print("with `no such module`, which reads as a broken example rather than")
+    print("as a missing toolchain component.")
+    exit(1)
+}
+
 let architecture = run("uname", ["-m"]).output.trimmingCharacters(in: .whitespacesAndNewlines)
 
 // The package's own macOS floor, so that an example calling something newer
@@ -876,6 +976,7 @@ let environment = TypeCheckEnvironment(
     stubsPath: root + "/Scripts/DocumentationExampleStubs.swift",
     modulePath: modulePath,
     sdkPath: sdkPath,
+    frameworkPath: frameworkPath,
     target: "\(architecture)-apple-macosx13.0"
 )
 
@@ -889,15 +990,15 @@ guard !allFences.isEmpty else {
     exit(1)
 }
 
-let normalisedExemptions = exemptions.map { ($0, normalised($0.code)) }
-var usedExemptions: Set<Int> = []
-var exempt: [(Fence, Exemption)] = []
+let normalisedSyntaxOnly = syntaxOnlyFences.map { ($0, normalised($0.code)) }
+var usedSyntaxOnly: Set<Int> = []
+var syntaxOnly: [(Fence, SyntaxOnlyFence)] = []
 var checkable: [Fence] = []
 
 for fence in allFences {
-    if let index = normalisedExemptions.firstIndex(where: { $0.1 == fence.code }) {
-        usedExemptions.insert(index)
-        exempt.append((fence, normalisedExemptions[index].0))
+    if let index = normalisedSyntaxOnly.firstIndex(where: { $0.1 == fence.code }) {
+        usedSyntaxOnly.insert(index)
+        syntaxOnly.append((fence, normalisedSyntaxOnly[index].0))
     } else {
         checkable.append(fence)
     }
@@ -911,19 +1012,19 @@ for fence in allFences {
 // until someone went looking for it.
 let swiftishCount = allFences.count + skipped.count
 
-// Read as a reconciliation — 29 + 4 + 0 = 33 — so make it one. A fence lands in
+// Read as a reconciliation — 31 + 2 + 0 = 33 — so make it one. A fence lands in
 // exactly one of the buckets above, which makes this true by construction
 // today; it is here as a tripwire for the edit that adds a fourth bucket and
 // updates the loop without updating the summary.
-guard checkable.count + exempt.count + skipped.count == swiftishCount else {
-    print("error: \(swiftishCount) fences found, but \(checkable.count) to compile")
-    print("+ \(exempt.count) exempt + \(skipped.count) skipped does not account for them.")
+guard checkable.count + syntaxOnly.count + skipped.count == swiftishCount else {
+    print("error: \(swiftishCount) fences found, but \(checkable.count) to type-check")
+    print("+ \(syntaxOnly.count) to parse + \(skipped.count) skipped does not account for them.")
     print("The scan and the summary disagree, so neither can be trusted.")
     exit(1)
 }
 
 print("Found \(swiftishCount) Swift fences across \(markdownPathsToScan.count) files.")
-print("\(checkable.count) to compile, \(exempt.count) exempt, \(skipped.count) skipped.\n")
+print("\(checkable.count) to type-check, \(syntaxOnly.count) to parse, \(skipped.count) skipped.\n")
 
 var failures: [(fence: Fence, headline: String, detail: String)] = []
 
@@ -986,16 +1087,44 @@ for fence in checkable {
     )
 }
 
-var unusedExemptions: [Exemption] = []
-for (index, exemption) in exemptions.enumerated() where !usedExemptions.contains(index) {
-    unusedExemptions.append(exemption)
+// Deliberately reported as `parsed` and never as `ok`. The two words are the
+// only thing in this output that distinguishes a fence held to the whole
+// standard from one held to a much weaker one, and a reader who cannot see
+// that difference at a glance is reading a green run as more than it says.
+for (fence, entry) in syntaxOnly {
+    let outcome = parseCheck(fence, in: environment)
+
+    guard outcome.isClean else {
+        print("  FAILED    \(fence.label)")
+        failures.append(
+            (
+                fence,
+                "does not parse",
+                "This fence is not type-checked — see the entry recorded "
+                    + "for it — so parsing is the whole of what is being "
+                    + "asserted here, and it did not hold.\n\n"
+                    + outcome.output
+            )
+        )
+        continue
+    }
+
+    print("  parsed    \(fence.label)")
+}
+
+var unusedSyntaxOnly: [SyntaxOnlyFence] = []
+for (index, entry) in syntaxOnlyFences.enumerated() where !usedSyntaxOnly.contains(index) {
+    unusedSyntaxOnly.append(entry)
 }
 
 print("")
 
-for (fence, exemption) in exempt {
-    print("  exempt    \(fence.label)")
-    print("            \(exemption.reason.replacingOccurrences(of: "\n", with: "\n            "))")
+if !syntaxOnly.isEmpty {
+    print("Parsed rather than type-checked, and why:\n")
+    for (fence, entry) in syntaxOnly {
+        print("  \(fence.label)")
+        print("            \(entry.reason.replacingOccurrences(of: "\n", with: "\n            "))")
+    }
 }
 
 if !failures.isEmpty {
@@ -1006,12 +1135,14 @@ if !failures.isEmpty {
     }
 }
 
-if !unusedExemptions.isEmpty {
+if !unusedSyntaxOnly.isEmpty {
     print("\n\(String(repeating: "-", count: 72))")
-    print("\nThese exemptions match no fence. The snippet they covered was edited or")
-    print("removed, so the exemption is stale and must be re-decided or deleted:\n")
-    for exemption in unusedExemptions {
-        print(exemption.code)
+    print("\nThese parse-only entries match no fence. The snippet each covered was")
+    print("edited or removed, so the entry is stale. Re-decide it or delete it, and")
+    print("note that deleting it means the fence is type-checked again, which is the")
+    print("stronger standard and may well be the right answer now:\n")
+    for entry in unusedSyntaxOnly {
+        print(entry.code)
         print("")
     }
 }
@@ -1032,16 +1163,21 @@ if !skipped.isEmpty {
 
 print("\n\(String(repeating: "=", count: 72))")
 
-if failures.isEmpty, unusedExemptions.isEmpty, skipped.isEmpty {
-    print("\(checkable.count) documentation examples compile without warnings. \(exempt.count) exempt.")
+if failures.isEmpty, unusedSyntaxOnly.isEmpty, skipped.isEmpty {
+    print("\(checkable.count) documentation examples compile without warnings.")
+    print("\(syntaxOnly.count) parse but are not type-checked.")
     exit(0)
 }
 
 if !failures.isEmpty {
-    print("\(failures.count) documentation example(s) do not compile cleanly.")
+    // Not "do not compile cleanly": a parse-only fence that failed did not
+    // fail to compile, because compiling it was never attempted, and a
+    // summary line that says otherwise sends the reader looking for a
+    // type error that was never checked for.
+    print("\(failures.count) documentation example(s) did not clear the standard recorded for them.")
 }
-if !unusedExemptions.isEmpty {
-    print("\(unusedExemptions.count) exemption(s) match nothing.")
+if !unusedSyntaxOnly.isEmpty {
+    print("\(unusedSyntaxOnly.count) parse-only entry/entries match nothing.")
 }
 if !skipped.isEmpty {
     print("\(skipped.count) Swift-ish fence(s) were skipped without being checked.")
