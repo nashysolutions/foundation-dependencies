@@ -127,9 +127,15 @@ private func emptyScratchSuite() {
 /// Asserts that every reader reports the documented absent-key result for `key`.
 ///
 /// Three situations must be indistinguishable from each other: a key never written, a
-/// key passed to `removeObject`, and a key cleared by writing `nil` through one of the
+/// key passed to `removeValue`, and a key cleared by writing `nil` through one of the
 /// optional setters. Collecting the expectations here is what makes that sameness a
 /// single statement rather than three lists that could drift apart.
+///
+/// Every reader answers `nil`, and `contains` answers `false`. The three scalar
+/// readers used to answer `false` and `0` here, which is the conflation this suite's
+/// subject was redesigned to remove: those answers were also what a key holding a
+/// stored `false` or `0` gave, so no assertion could tell the two apart and neither
+/// could a caller.
 ///
 /// `sourceLocation` is threaded through so a failure points at the calling case rather
 /// than at this function.
@@ -139,11 +145,33 @@ func expectAbsent(
     key: String,
     sourceLocation: SourceLocation = #_sourceLocation
 ) {
-    #expect(store.bool(forKey: key) == false, sourceLocation: sourceLocation)
-    #expect(store.int(forKey: key) == 0, sourceLocation: sourceLocation)
-    #expect(store.double(forKey: key) == 0, sourceLocation: sourceLocation)
+    #expect(store.contains(key: key) == false, sourceLocation: sourceLocation)
+    #expect(store.bool(forKey: key) == nil, sourceLocation: sourceLocation)
+    #expect(store.int(forKey: key) == nil, sourceLocation: sourceLocation)
+    #expect(store.double(forKey: key) == nil, sourceLocation: sourceLocation)
     #expect(store.string(forKey: key) == nil, sourceLocation: sourceLocation)
     #expect(store.stringArray(forKey: key) == nil, sourceLocation: sourceLocation)
     #expect(store.date(forKey: key) == nil, sourceLocation: sourceLocation)
-    #expect(store.object(forKey: key) == nil, sourceLocation: sourceLocation)
+    #expect(store.data(forKey: key) == nil, sourceLocation: sourceLocation)
+    #expect(store.url(forKey: key) == nil, sourceLocation: sourceLocation)
+}
+
+/// Asserts that the three scalar readers give a reading for a key that holds
+/// something, whatever it holds.
+///
+/// The other half of the contract `expectAbsent` states. `nil` from ``bool``, ``int``
+/// or ``double`` has to mean absence and nothing else, so a case that seeds a value
+/// with no sensible numeric meaning — a date, an array, a blob — still has to get a
+/// reading back. Without this, changing those three to answer `nil` for a value they
+/// cannot coerce would pass every absence case in the target.
+@MainActor
+func expectScalarReadings(
+    _ store: UserDefaultsClient,
+    key: String,
+    sourceLocation: SourceLocation = #_sourceLocation
+) {
+    #expect(store.contains(key: key) == true, sourceLocation: sourceLocation)
+    #expect(store.bool(forKey: key) != nil, sourceLocation: sourceLocation)
+    #expect(store.int(forKey: key) != nil, sourceLocation: sourceLocation)
+    #expect(store.double(forKey: key) != nil, sourceLocation: sourceLocation)
 }

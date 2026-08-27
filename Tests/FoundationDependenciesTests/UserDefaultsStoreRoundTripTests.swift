@@ -81,43 +81,134 @@ struct UserDefaultsStoreRoundTripTests {
         }
     }
 
-    /// `setObject` is the untyped way in, and every property list type must arrive
-    /// intact enough for the matching typed reader to find it.
-    @Test("A property list value written through setObject reaches its typed reader",
-          arguments: StoreKind.allCases)
-    func objectWritesReachTheTypedReaders(kind: StoreKind) throws {
+    @Test("Data reads back as written", arguments: StoreKind.allCases)
+    func dataRoundTrips(kind: StoreKind) throws {
         try withStore(kind) { store in
-            store.setObject("abc", forKey: "text")
-            store.setObject(42, forKey: "number")
-            store.setObject(3.5, forKey: "fraction")
-            store.setObject(true, forKey: "flag")
-            store.setObject(sampleDate, forKey: "moment")
-            store.setObject(["a", "b"], forKey: "list")
+            store.setData(sampleData, forKey: "key")
+            #expect(store.data(forKey: "key") == sampleData)
+        }
+    }
+
+    /// Empty data is stored rather than treated as a removal, the same way an empty
+    /// string and an empty array are.
+    @Test("Empty data is stored rather than treated as a removal",
+          arguments: StoreKind.allCases)
+    func emptyDataIsStored(kind: StoreKind) throws {
+        try withStore(kind) { store in
+            store.setData(Data(), forKey: "key")
+
+            #expect(store.contains(key: "key"))
+            #expect(store.data(forKey: "key") == Data())
+        }
+    }
+
+    /// A URL round trips through the text it is stored as, in every part.
+    ///
+    /// `absoluteString` is the representation, so a store that dropped the query or
+    /// the fragment, or that re-encoded the path, fails here. `sampleURL` carries all
+    /// of those parts for that reason.
+    @Test("A URL reads back as written", arguments: StoreKind.allCases)
+    func urlRoundTrips(kind: StoreKind) throws {
+        try withStore(kind) { store in
+            let url = try sampleURL()
+            store.setURL(url, forKey: "key")
+            #expect(store.url(forKey: "key") == url)
+        }
+    }
+
+    /// A file URL is stored by the same rule as any other, which is the point of the
+    /// rule.
+    ///
+    /// `UserDefaults.set(_:forKey:)` writes a file URL as a bare path and every other
+    /// URL as an `NSKeyedArchiver` blob, so its two kinds of URL are two formats. Here
+    /// they are one, and a file URL keeps its scheme.
+    @Test("A file URL reads back as a file URL", arguments: StoreKind.allCases)
+    func fileURLRoundTrips(kind: StoreKind) throws {
+        try withStore(kind) { store in
+            let url = URL(fileURLWithPath: "/tmp/a b.txt")
+            store.setURL(url, forKey: "key")
+
+            #expect(store.url(forKey: "key") == url)
+            #expect(store.url(forKey: "key")?.isFileURL == true)
+        }
+    }
+
+    /// The URL endpoints and the string endpoints are two readings of one stored
+    /// value, which is what makes a stored URL legible in a `plist`.
+    @Test("A URL and a string are two readings of the same stored text",
+          arguments: StoreKind.allCases)
+    func urlAndStringReadTheSameValue(kind: StoreKind) throws {
+        try withStore(kind) { store in
+            let url = try sampleURL()
+            store.setURL(url, forKey: "written-as-url")
+            store.setString(url.absoluteString, forKey: "written-as-string")
+
+            #expect(store.string(forKey: "written-as-url") == url.absoluteString)
+            #expect(store.url(forKey: "written-as-string") == url)
+        }
+    }
+
+    /// `setPropertyList` is the way in for a value none of the typed setters
+    /// describes, and every case must arrive intact enough for the matching typed
+    /// reader to find it.
+    @Test("A property list value reaches its typed reader",
+          arguments: StoreKind.allCases)
+    func propertyListWritesReachTheTypedReaders(kind: StoreKind) throws {
+        try withStore(kind) { store in
+            store.setPropertyList("abc", forKey: "text")
+            store.setPropertyList(42, forKey: "number")
+            store.setPropertyList(3.5, forKey: "fraction")
+            store.setPropertyList(true, forKey: "flag")
+            store.setPropertyList(.date(sampleDate), forKey: "moment")
+            store.setPropertyList(.data(sampleData), forKey: "blob")
+            store.setPropertyList(["a", "b"], forKey: "list")
 
             #expect(store.string(forKey: "text") == "abc")
             #expect(store.int(forKey: "number") == 42)
             #expect(store.double(forKey: "fraction") == 3.5)
             #expect(store.bool(forKey: "flag") == true)
             #expect(store.date(forKey: "moment") == sampleDate)
+            #expect(store.data(forKey: "blob") == sampleData)
             #expect(store.stringArray(forKey: "list") == ["a", "b"])
         }
     }
 
-    /// The contract on `object` is presence, not type.
+    /// A nested value survives, so the two container cases are not flattened or
+    /// stringified on the way in.
+    ///
+    /// The dictionary reaches no typed reader, which is deliberate: there is no
+    /// endpoint that returns one. What is checked is that the write is accepted, that
+    /// the key is present afterwards, and that a value nested two levels down is still
+    /// reachable through the array reader when it is put somewhere one can reach.
+    @Test("A nested property list value is stored whole",
+          arguments: StoreKind.allCases)
+    func nestedPropertyListValuesAreStored(kind: StoreKind) throws {
+        try withStore(kind) { store in
+            store.setPropertyList(
+                ["counts": [1, 2, 3], "names": ["a", "b"], "seen": true],
+                forKey: "nested"
+            )
+            store.setPropertyList(.array([.string("a"), .string("b")]), forKey: "list")
+
+            #expect(store.contains(key: "nested"))
+            #expect(store.stringArray(forKey: "nested") == nil)
+            #expect(store.stringArray(forKey: "list") == ["a", "b"])
+        }
+    }
+
+    /// The contract on presence is presence, not type.
     ///
     /// Live `UserDefaults` normalises a value into its Foundation counterpart on the
-    /// way in, so a stored `Int` comes back out of `object` as an `NSNumber` there and
-    /// as an `Int` from the in-memory store. That divergence is documented on
-    /// `UserDefaultsTestStore` and is deliberately not asserted either way here: an
-    /// assertion pinning one of the two answers would be pinning an implementation
-    /// detail the protocol does not promise. What both must agree on is whether the
-    /// key is there at all.
+    /// way in, so a stored `Int` is an `NSNumber` there and an `Int` in the in-memory
+    /// store. No endpoint returns the stored value itself any more, so that difference
+    /// is unobservable, and what both stores must agree on is whether the key is there
+    /// at all.
     @Test("Any write makes the key present",
           arguments: StoreKind.allCases, SeededValue.allCases)
     func aWrittenKeyIsPresent(kind: StoreKind, seeded: SeededValue) throws {
         try withStore(kind) { store in
-            seeded.write(into: store, key: "key")
-            #expect(store.object(forKey: "key") != nil)
+            try seeded.write(into: store, key: "key")
+            #expect(store.contains(key: "key"))
         }
     }
 
@@ -140,9 +231,9 @@ struct UserDefaultsStoreRoundTripTests {
             store.setInt(1, forKey: "first")
             store.setInt(2, forKey: "second")
 
-            store.removeObject(forKey: "first")
+            store.removeValue(forKey: "first")
 
-            #expect(store.int(forKey: "first") == 0)
+            #expect(store.int(forKey: "first") == nil)
             #expect(store.int(forKey: "second") == 2)
         }
     }

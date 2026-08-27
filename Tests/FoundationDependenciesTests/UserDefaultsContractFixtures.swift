@@ -51,11 +51,33 @@ private func described(_ value: Any) -> String {
 /// expected result is not-a-number even when the reader returned exactly that. Those
 /// rows are real behaviour: a stored not-a-number reads back unchanged through
 /// `double`, unlike the string `"nan"`, which reads as zero.
-func matches(_ actual: Double, _ expected: Double) -> Bool {
+///
+/// `actual` is optional because the reader is: `nil` means the key held nothing, which
+/// no row here expects, so it is never a match. A row that wants absence says so with
+/// `expectAbsent` instead.
+func matches(_ actual: Double?, _ expected: Double) -> Bool {
+    guard let actual else {
+        return false
+    }
     if expected.isNaN {
         return actual.isNaN
     }
     return actual == expected
+}
+
+/// A URL with a scheme, a host, a path, a query and a fragment, so a round trip that
+/// drops any of those parts fails rather than passing on a simpler value.
+///
+/// A function rather than a stored `let` because `URL(string:)` is failable and this
+/// target does not force unwrap. `#require` turns a parse this suite could not make
+/// into one clear failure naming the fixture, in the same way the harness handles the
+/// failable store initialiser.
+func sampleURL(sourceLocation: SourceLocation = #_sourceLocation) throws -> URL {
+    try #require(
+        URL(string: "https://example.com/a/b?c=d#e"),
+        "The sample URL no longer parses.",
+        sourceLocation: sourceLocation
+    )
 }
 
 /// A date whose value survives a property list round trip exactly.
@@ -65,6 +87,10 @@ func matches(_ actual: Double, _ expected: Double) -> Bool {
 /// into an indistinguishable rounding failure. This one is exactly representable, so a
 /// round-trip failure means the store dropped or altered the value.
 let sampleDate = Date(timeIntervalSince1970: 1_700_000_000)
+
+/// A short blob whose bytes include a zero and a high byte, so a store that round
+/// tripped it through a string encoding would fail rather than pass on ASCII.
+let sampleData = Data([0x00, 0x01, 0xFF])
 
 /// One endpoint that puts a value into a store, paired with a sample of the right type.
 ///
@@ -78,7 +104,9 @@ enum SeededValue: String, CaseIterable, Sendable, CustomTestStringConvertible {
     case string
     case stringArray
     case date
-    case object
+    case data
+    case url
+    case propertyList
 
     /// The samples that read as zero through `int` and `double` and as `nil` through
     /// `string`.
@@ -86,7 +114,13 @@ enum SeededValue: String, CaseIterable, Sendable, CustomTestStringConvertible {
     /// Reading as zero is not on its own enough to belong here. A stored `"abc"` is
     /// zero through both number readers too, but it is still a string, so `string`
     /// returns it rather than `nil` and it stays out of this list.
-    static let nonNumericCases: [SeededValue] = [.stringArray, .date]
+    ///
+    /// `url` stays out for the same reason and it is worth saying why, because the
+    /// intuition points the other way: a URL is stored as its `absoluteString`, so the
+    /// key holds text and `string` returns that text. `data` is in the list, having
+    /// been measured against a real suite: a stored blob has no string reading and no
+    /// numeric one.
+    static let nonNumericCases: [SeededValue] = [.stringArray, .date, .data]
 
     var testDescription: String {
         rawValue
@@ -94,7 +128,7 @@ enum SeededValue: String, CaseIterable, Sendable, CustomTestStringConvertible {
 
     /// Writes this endpoint's sample value under `key`.
     @MainActor
-    func write(into store: UserDefaultsClient, key: String) {
+    func write(into store: UserDefaultsClient, key: String) throws {
         switch self {
         case .bool:
             store.setBool(true, forKey: key)
@@ -108,8 +142,12 @@ enum SeededValue: String, CaseIterable, Sendable, CustomTestStringConvertible {
             store.setStringArray(["a", "b"], forKey: key)
         case .date:
             store.setDate(sampleDate, forKey: key)
-        case .object:
-            store.setObject("abc", forKey: key)
+        case .data:
+            store.setData(sampleData, forKey: key)
+        case .url:
+            store.setURL(try sampleURL(), forKey: key)
+        case .propertyList:
+            store.setPropertyList(["a": 1, "b": "two"], forKey: key)
         }
     }
 }
@@ -123,7 +161,9 @@ enum NilCapableSetter: String, CaseIterable, Sendable, CustomTestStringConvertib
     case string
     case stringArray
     case date
-    case object
+    case data
+    case url
+    case propertyList
 
     var testDescription: String {
         rawValue
@@ -131,7 +171,7 @@ enum NilCapableSetter: String, CaseIterable, Sendable, CustomTestStringConvertib
 
     /// Writes a non-nil value, so there is something for the `nil` write to remove.
     @MainActor
-    func seed(_ store: UserDefaultsClient, key: String) {
+    func seed(_ store: UserDefaultsClient, key: String) throws {
         switch self {
         case .string:
             store.setString("abc", forKey: key)
@@ -139,8 +179,12 @@ enum NilCapableSetter: String, CaseIterable, Sendable, CustomTestStringConvertib
             store.setStringArray(["a", "b"], forKey: key)
         case .date:
             store.setDate(sampleDate, forKey: key)
-        case .object:
-            store.setObject("abc", forKey: key)
+        case .data:
+            store.setData(sampleData, forKey: key)
+        case .url:
+            store.setURL(try sampleURL(), forKey: key)
+        case .propertyList:
+            store.setPropertyList("abc", forKey: key)
         }
     }
 
@@ -154,8 +198,12 @@ enum NilCapableSetter: String, CaseIterable, Sendable, CustomTestStringConvertib
             store.setStringArray(nil, forKey: key)
         case .date:
             store.setDate(nil, forKey: key)
-        case .object:
-            store.setObject(nil, forKey: key)
+        case .data:
+            store.setData(nil, forKey: key)
+        case .url:
+            store.setURL(nil, forKey: key)
+        case .propertyList:
+            store.setPropertyList(nil, forKey: key)
         }
     }
 }

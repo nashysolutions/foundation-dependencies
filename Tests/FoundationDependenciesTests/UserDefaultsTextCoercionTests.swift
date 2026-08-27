@@ -136,27 +136,34 @@ struct UserDefaultsTextCoercionTests {
         }
     }
 
-    /// A date or an array has no string reading at all. Neither is rendered into a
-    /// description, so a caller cannot mistake one for stored text.
-    @Test("A date or an array has no string reading",
+    /// A date, an array or a blob has no string reading at all. None is rendered into
+    /// a description, so a caller cannot mistake one for stored text.
+    @Test("A date, an array or a blob has no string reading",
           arguments: StoreKind.allCases, SeededValue.nonNumericCases)
-    func aDateOrArrayHasNoStringReading(kind: StoreKind, seeded: SeededValue) throws {
+    func aNonNumericValueHasNoStringReading(kind: StoreKind, seeded: SeededValue) throws {
         try withStore(kind) { store in
-            seeded.write(into: store, key: "key")
+            try seeded.write(into: store, key: "key")
             #expect(store.string(forKey: "key") == nil)
         }
     }
 
     /// `stringArray` is all or nothing. A mixed array is not filtered down to the
     /// strings it happens to contain, and an array of numbers is not stringified.
+    ///
+    /// Building the mixed and non-string arrays is what `setPropertyList` is for. The
+    /// endpoint it replaced took `Any?`, and this case is the reason the replacement
+    /// had to keep accepting a heterogeneous value rather than being retired outright:
+    /// a defaults domain is shared, so a value this API did not write can be in it,
+    /// and a suite that could not construct one could not check what the readers do
+    /// with it.
     @Test("stringArray reads only an array whose elements are all strings",
           arguments: StoreKind.allCases)
     func stringArrayReadsOnlyStrings(kind: StoreKind) throws {
         try withStore(kind) { store in
-            store.setObject(["a", "b"] as [Any], forKey: "all-strings")
-            store.setObject(["a", 1] as [Any], forKey: "mixed")
-            store.setObject([1, 2], forKey: "numbers")
-            store.setObject([sampleDate], forKey: "dates")
+            store.setPropertyList(["a", "b"], forKey: "all-strings")
+            store.setPropertyList(["a", 1], forKey: "mixed")
+            store.setPropertyList([1, 2], forKey: "numbers")
+            store.setPropertyList(.array([.date(sampleDate)]), forKey: "dates")
             store.setString("abc", forKey: "text")
 
             #expect(store.stringArray(forKey: "all-strings") == ["a", "b"])
@@ -182,13 +189,63 @@ struct UserDefaultsTextCoercionTests {
         }
     }
 
-    @Test("Stored data has no Boolean or string reading", arguments: StoreKind.allCases)
-    func dataHasNoBooleanOrStringReading(kind: StoreKind) throws {
+    /// Stored data reads as `false` rather than as `nil` or as "there are bytes here,
+    /// so yes".
+    ///
+    /// The string reading is covered for every non-numeric sample by the case above.
+    @Test("Stored data has no Boolean reading", arguments: StoreKind.allCases)
+    func dataHasNoBooleanReading(kind: StoreKind) throws {
         try withStore(kind) { store in
-            store.setObject(Data([1, 2, 3]), forKey: "key")
+            store.setData(sampleData, forKey: "key")
 
             #expect(store.bool(forKey: "key") == false)
-            #expect(store.string(forKey: "key") == nil)
+        }
+    }
+
+    /// `url` reads only text that is an absolute URL.
+    ///
+    /// The rows that matter are the ones `URL(string:)` accepts and this endpoint does
+    /// not. That initialiser parses almost anything, percent-encoding what it cannot
+    /// use, and returns a relative URL with no scheme; a caller asking a key for a URL
+    /// wants one it can open, so a reading with no scheme is not a reading.
+    @Test("url reads only text that parses as a URL with a scheme",
+          arguments: StoreKind.allCases)
+    func urlReadsOnlyAbsoluteURLs(kind: StoreKind) throws {
+        try withStore(kind) { store in
+            store.setString("https://example.com/x", forKey: "absolute")
+            store.setString("mailto:someone@example.com", forKey: "mailto")
+            store.setString("hello", forKey: "bare-word")
+            store.setString("/tmp/path", forKey: "bare-path")
+            store.setString("//example.com", forKey: "scheme-relative")
+            store.setString("", forKey: "empty")
+            store.setInt(42, forKey: "number")
+            store.setDate(sampleDate, forKey: "moment")
+
+            #expect(store.url(forKey: "absolute")?.absoluteString == "https://example.com/x")
+            #expect(store.url(forKey: "mailto")?.scheme == "mailto")
+            #expect(store.url(forKey: "bare-word") == nil)
+            #expect(store.url(forKey: "bare-path") == nil)
+            #expect(store.url(forKey: "scheme-relative") == nil)
+            #expect(store.url(forKey: "empty") == nil)
+            #expect(store.url(forKey: "number") == nil)
+            #expect(store.url(forKey: "moment") == nil)
+        }
+    }
+
+    /// `data` reads only stored bytes. A string is not decoded into its UTF-8, which
+    /// is the coercion a caller is most likely to expect and not get.
+    @Test("data reads only stored bytes", arguments: StoreKind.allCases)
+    func dataReadsOnlyBytes(kind: StoreKind) throws {
+        try withStore(kind) { store in
+            store.setString("abc", forKey: "text")
+            store.setInt(42, forKey: "number")
+            store.setDate(sampleDate, forKey: "moment")
+            store.setStringArray(["a"], forKey: "list")
+
+            #expect(store.data(forKey: "text") == nil)
+            #expect(store.data(forKey: "number") == nil)
+            #expect(store.data(forKey: "moment") == nil)
+            #expect(store.data(forKey: "list") == nil)
         }
     }
 }

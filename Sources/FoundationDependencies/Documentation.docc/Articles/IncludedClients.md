@@ -8,7 +8,7 @@ A wrapper around `Bundle` that uses a `BundleResourceProvider` abstraction to al
 
 ## `userDefaultsClient`
 
-A testable interface to `UserDefaults`, built as a struct of closures with a method per endpoint, so a single operation can be replaced without restating the rest.
+A testable interface to `UserDefaults`, built as a struct of closures with a method per endpoint, so a single operation can be replaced without restating the rest. Every read returns an optional, so a key holding nothing is distinguishable from a key holding `false` or `0`, and `Codable` values are stored through `encode(_:forKey:)` and `decode(_:forKey:)`.
 
 ## `fileSystemClient`
 

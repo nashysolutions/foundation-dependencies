@@ -60,7 +60,6 @@ opt_in_rules:
 
   # Public API surface. Consumers read this source to understand the clients
   # they are wiring up, so the declarations should say exactly what they mean.
-  - discouraged_optional_boolean
   - explicit_init
   - local_doc_comment
   - lower_acl_than_parent
@@ -108,6 +107,14 @@ opt_in_rules:
 #     conformance stubs and public client properties whose `throws` is required
 #     by the protocol or is part of the published signature. Satisfying the
 #     rule would be a source-breaking API change.
+#   discouraged_optional_boolean (1) - was opted in until the read surface became
+#     optional. `UserDefaultsClient.bool` returns `Bool?` so that a key holding
+#     nothing is distinguishable from a key holding `false`, which is the whole
+#     point of that endpoint's redesign, and the rule flags exactly that
+#     declaration. Measured on this tree: the rule fires on
+#     `@Sendable (String) -> Bool?` and not on the non-optional form, so there is
+#     no way to spell the intended API and keep the rule. It is recorded here
+#     rather than silenced at the declaration, per the rule set note above.
 #   discouraged_optional_collection (11) - would require changing published
 #     signatures. An API design question, not a lint question.
 #   empty_string (1), empty_collection_literal (1) - both sites are round-trip

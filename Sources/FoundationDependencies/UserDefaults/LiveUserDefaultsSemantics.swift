@@ -15,6 +15,12 @@ import Foundation
 /// `UserDefaults` suite rather than inferred from the documentation, which says only
 /// that values are converted.
 ///
+/// Every function here takes a value that is present. Absence is the caller's to
+/// handle and is not a case below, because the readers return `nil` for a key that
+/// holds nothing and a coerced reading for a key that holds something. Taking `Any?`
+/// would put the absence rule in five places instead of one, and let a later endpoint
+/// disagree with the rest about what a missing key reads as.
+///
 /// Several of the measured rules contradict the obvious guess, so treat this type as
 /// the authoritative statement of them:
 ///
@@ -34,8 +40,8 @@ enum LiveUserDefaultsSemantics {
     /// A number is `true` when it is not zero, so `2`, `-1` and `0.5` are all `true`,
     /// as are infinity and not-a-number. A string is `true` only when it reads as
     /// `"yes"` or `"true"` in any casing, or is exactly `"1"`; `"2"`, `"01"`, `" 1"`
-    /// and `"y"` are all `false`. Dates, arrays, data and a missing key are `false`.
-    static func boolean(from value: Any?) -> Bool {
+    /// and `"y"` are all `false`. Dates, arrays and data are `false`.
+    static func boolean(from value: Any) -> Bool {
         switch value {
         case let flag as Bool:
             flag
@@ -59,9 +65,9 @@ enum LiveUserDefaultsSemantics {
     /// makes infinity read as `Int.max` and negative infinity as `Int.min`.
     /// Not-a-number reads as `0`. A string must be an optionally signed run of digits
     /// in its entirety after any leading spaces or tabs, so `"42"` and `" 42"` read as
-    /// `42` while `"3.99"`, `"42abc"` and `"42 "` all read as `0`. Dates, arrays, data
-    /// and a missing key read as `0`.
-    static func integer(from value: Any?) -> Int {
+    /// `42` while `"3.99"`, `"42abc"` and `"42 "` all read as `0`. Dates, arrays and
+    /// data read as `0`.
+    static func integer(from value: Any) -> Int {
         switch value {
         case let flag as Bool:
             flag ? 1 : 0
@@ -85,8 +91,8 @@ enum LiveUserDefaultsSemantics {
     /// reads as `3.14` and `"42abc"` as `42`. A string with no numeric prefix reads as
     /// `0`, and that includes `"inf"` and `"nan"`, neither of which is treated as a
     /// number when spelled out. A stored `Double` keeps whatever it is, infinity and
-    /// not-a-number included. Dates, arrays, data and a missing key read as `0`.
-    static func double(from value: Any?) -> Double {
+    /// not-a-number included. Dates, arrays and data read as `0`.
+    static func double(from value: Any) -> Double {
         switch value {
         case let flag as Bool:
             flag ? 1 : 0
@@ -108,8 +114,8 @@ enum LiveUserDefaultsSemantics {
     /// Numbers are stringified as `NSNumber` stringifies them, which drops a
     /// redundant fractional part, so a stored `3.0` reads as `"3"` rather than
     /// `"3.0"`, and gives `"inf"` and `"nan"` for the two special values. A `Bool`
-    /// reads as `"1"` or `"0"`. Dates, data, arrays and a missing key read as `nil`.
-    static func string(from value: Any?) -> String? {
+    /// reads as `"1"` or `"0"`. Dates, data and arrays read as `nil`.
+    static func string(from value: Any) -> String? {
         switch value {
         case let text as String:
             text
@@ -130,7 +136,7 @@ enum LiveUserDefaultsSemantics {
     ///
     /// Returns the array only when every element is a string. A mixed array or an
     /// array of numbers reads as `nil` rather than as a filtered or empty array.
-    static func stringArray(from value: Any?) -> [String]? {
+    static func stringArray(from value: Any) -> [String]? {
         value as? [String]
     }
 

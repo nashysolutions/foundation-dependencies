@@ -17,6 +17,86 @@ It is the whole interface: a struct of closures, one per operation, with a metho
 
 Until your app registers a live store, that code resolves to an in-memory store and nothing it writes is persisted. Registering one is the first thing to do.
 
+## What `nil` Means
+
+Every reader returns an optional, and `??` is where a default lives. There is no defaulted variant of any endpoint, because that is what `??` already is.
+
+`bool`, `int` and `double` return `nil` **only** when the key holds nothing:
+
+```swift
+@Dependency(\.userDefaultsClient) var userDefaults
+
+let launches = userDefaults.int(forKey: "launches") ?? 0
+userDefaults.setInt(launches + 1, forKey: "launches")
+
+if userDefaults.bool(forKey: "hasOnboarded") == nil {
+    // Nothing has been written under this key yet. A stored `false` is a
+    // different situation, and reads back as `false`.
+    userDefaults.setBool(false, forKey: "hasOnboarded")
+}
+```
+
+A key holding a value always has a reading through those three, because `UserDefaults` coerces rather than refusing. A stored `Date` reads as `false` and `0`, a stored `"42"` reads as `42`, and a stored `"YES"` reads as `true`, exactly as they do in production. What changed is only that absence is no longer spelled the same way as a stored `false` or a stored zero, which is what the earlier non-optional readers did and what nothing at the call site could see through.
+
+The remaining readers return `nil` for a key that holds nothing *and* for a key whose value has no reading of that type, which is again what production does: a stored `Date` has no `string` reading. `contains(key:)` is what separates those two cases, and is the only endpoint that answers presence whatever the stored type.
+
+```swift
+@Dependency(\.userDefaultsClient) var userDefaults
+
+userDefaults.setDate(.now, forKey: "installedAt")
+
+// A `Date` has no string reading, so `string` is `nil` for a key that does hold
+// a value. `contains` is what tells that apart from a key holding nothing.
+if userDefaults.string(forKey: "installedAt") == nil,
+   userDefaults.contains(key: "installedAt") {
+    print("There is a value here, but not one that reads as text.")
+}
+```
+
+## `Codable` Values
+
+`encode(_:forKey:)` and `decode(_:forKey:)` store a value as JSON. They are the way to keep anything above a raw scalar, and are methods rather than endpoints because an endpoint is a stored closure and a stored closure cannot be generic.
+
+```swift
+struct Preferences: Codable {
+
+    var theme: String
+    var launches: Int
+}
+
+@Dependency(\.userDefaultsClient) var userDefaults
+
+try userDefaults.encode(Preferences(theme: "dark", launches: 0), forKey: "preferences")
+let stored = try userDefaults.decode(Preferences.self, forKey: "preferences")
+```
+
+The two failure modes are deliberately different. A key that holds nothing, or holds something that is not data, returns `nil`: not having stored a value yet is ordinary, and every other reader answers it the same way. Data that is present but does not decode throws, because that is a value written by an earlier version of the app or by something else entirely, and swallowing it would turn a migration defect into a silent reset.
+
+Both sides go through `data` and `setData`, so a test that replaces those two endpoints has replaced the `Codable` path with them, and a test that seeds a store with JSON has seeded it. There is no third thing to stub. Writing `nil` removes the key, as it does through every other setter that accepts one.
+
+## URLs
+
+`setURL` stores a URL as its `absoluteString`, and `url` reads that text back, returning `nil` unless it parses as a URL with a scheme. A stored URL is therefore also readable through `string`, and any stored string that is an absolute URL is readable through `url`.
+
+That is deliberately not what `UserDefaults.url(forKey:)` does, and the difference is worth knowing if values are shared with an Objective-C component. Measured against a real suite: `UserDefaults.set(_:forKey:)` writes a **file** URL as a bare path and every **other** URL as 263 bytes of `NSKeyedArchiver` output, so its two kinds of URL are two unrelated formats, neither legible in the `plist`. Its reader is worse: `url(forKey:)` interprets any stored string as a file path relative to the process's working directory, so a key holding `"hello"` reads back as `file:///…/hello` rather than as `nil`. A reader whose failure mode is a plausible wrong answer is not one this package wants to hand a caller.
+
+The cost is that a URL written by `UserDefaults` itself does not read back through `url` here. There is no representation that interoperates with both of Foundation's, because they are not the same as each other.
+
+## Values With No Typed Setter
+
+`setPropertyList` is the way in for a mixed array or a nested dictionary — a shape none of the typed setters describes. It takes a ``PropertyListValue``, which is built from literals, so the call site usually looks the way it would have with `Any`:
+
+```swift
+@Dependency(\.userDefaultsClient) var userDefaults
+
+userDefaults.setPropertyList(["launches": 3, "seen": true], forKey: "state")
+userDefaults.setPropertyList(["light", "dark"], forKey: "themes")
+```
+
+It replaces an endpoint that took `Any?`. `UserDefaults` raises `NSInvalidArgumentException` when handed a value a property list cannot hold, and that is a crash no call site can catch and no `Any?` signature warns about — `URL` was the value most likely to reach it by accident, because `UserDefaults` does have a dedicated overload that accepts one and that overload is not this endpoint. `PropertyListValue` has no case for anything a property list cannot hold, so there is now no way to write the argument.
+
+There is no matching reader. The typed readers cover what a caller wants a value *as*, and `contains(key:)` covers whether there is one at all, which between them is what the retired `object` endpoint was used for.
+
 ## Where You Can Call It From
 
 Anywhere. Every endpoint is a nonisolated `@Sendable` closure and none of them is `async`, so a read returns its value in whichever domain asked for it: a background task, a widget extension reaching a shared app group suite, or the main actor. Nothing hops, and a client can be handed across a domain boundary because `UserDefaultsClient` is `Sendable`.
@@ -138,13 +218,15 @@ Nothing survives the process.
 
 The test store is not a plain dictionary wrapper. `UserDefaults` coerces between types on read rather than returning a default when the stored type differs from the requested one, and the typed readers reproduce those coercions. A value stored through `setString` as `"42"` reads back through `int` as `42`, and `"YES"` reads back through `bool` as `true`, exactly as they would in production.
 
-Writes are validated the same way. `UserDefaults` raises `NSInvalidArgumentException` when asked to store anything that is not a property list value, so `setObject` traps on the same input rather than accepting it. Note this rejects `URL`, which production also rejects through this endpoint.
+Writes need no validation. Every setter takes a type `UserDefaults` can hold, and the one that accepts a heterogeneous value takes a `PropertyListValue`, which has no case for anything else. An earlier `setObject` took `Any?` and had to check its argument and trap; the check went when the type made the input unrepresentable.
 
-One divergence is worth knowing. `object` returns the value as it was written, whereas live `UserDefaults` returns the Foundation counterpart it normalised the value into. A value stored through `setInt` reads back from `object` as an `Int` here and as an `NSNumber` in production, so `object(forKey:) as? Bool` finds a `Bool` in production for a stored `1` and finds nothing here. The typed readers are unaffected and are the endpoints a test should prefer.
+There is no longer a divergence to know about. The endpoint that had one was `object`, which returned the value as written here and the Foundation counterpart production had normalised it into, so a stored `1` was an `Int` here and an `NSNumber` there and `object(forKey:) as? Bool` found one in production and nothing here. It is retired: `contains(key:)` answers the only question it was reliably good for, and the typed readers answer the rest.
+
+Every case in this package's contract suite runs against both stores, so the fidelity above is a checked fact rather than a claim in this article. A divergence fails on the day it appears.
 
 ### Stubbing Individual Endpoints
 
-Every endpoint is a `var`, so a single one can be replaced without restating the other fourteen:
+Every endpoint is a `var`, so a single one can be replaced without restating the other eighteen:
 
 ```swift
 withDependencies {
@@ -156,6 +238,8 @@ withDependencies {
 ```
 
 Assign to the closure, and call the method. The two are the same endpoint; the method exists so that call sites read `setBool(true, forKey: "key")` rather than `setBool(true, "key")`.
+
+Replacing `data` and `setData` replaces the `Codable` path along with them, since `encode(_:forKey:)` and `decode(_:forKey:)` are written over those two endpoints and nothing else.
 
 Seeding a `UserDefaultsTestStore` is still the better move when the test only needs values in place. Reach for a replaced endpoint when a test needs behaviour a real store cannot produce, such as recording which keys were written, or a read that fails.
 
@@ -173,3 +257,5 @@ withDependencies {
 ```
 
 That test now fails if the code under test touches any endpoint other than `bool`, which is what to reach for when the point of the test is which storage calls are made. It is the opposite default from `testValue`, which is a working store precisely so that a test using storage incidentally does not have to say so.
+
+The `Codable` methods are covered by it too, for the same reason they are covered by a stub: they call `data` and `setData`, so an unimplemented client reports through those.

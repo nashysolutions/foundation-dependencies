@@ -20,8 +20,26 @@ import IssueReporting
 /// @Dependency(\.userDefaultsClient) var userDefaults
 ///
 /// userDefaults.setBool(true, forKey: "hasOnboarded")
-/// let hasOnboarded = userDefaults.bool(forKey: "hasOnboarded")
+/// let hasOnboarded = userDefaults.bool(forKey: "hasOnboarded") ?? false
 /// ```
+///
+/// ## What `nil` means
+///
+/// Every reader returns an optional, and `??` supplies whatever default the call site
+/// wants. There is no defaulted variant of any endpoint, because that is what `??`
+/// already is.
+///
+/// ``bool``, ``int`` and ``double`` return `nil` **only** when the key holds nothing.
+/// A key that holds anything at all has a reading through those three, because live
+/// `UserDefaults` coerces rather than refusing, so a stored `Date` reads as `false`
+/// and `0` exactly as it does in production. That is the wart this shape exists to
+/// fix: reading `false` from the earlier non-optional `bool` meant either "stored
+/// `false`" or "nothing here", and no caller could tell which.
+///
+/// The remaining readers return `nil` for a key that holds nothing and for a key
+/// whose value has no reading of that type, which is again what production does: a
+/// stored `Date` has no ``string`` reading. ``contains`` is what separates those two,
+/// and is the only endpoint that answers presence for every type.
 ///
 /// ## Endpoints and their method equivalents
 ///
@@ -46,21 +64,25 @@ import IssueReporting
 /// This is not what ``testValue`` is, and the difference is deliberate. See the note
 /// there.
 ///
-/// ``bool``, ``int`` and ``double`` are the three endpoints that report through a
-/// written-out default rather than the one `@DependencyClient` generates, and the
-/// duplication is load-bearing rather than untidy. The macro refuses to generate a
-/// default for a non-throwing endpoint returning a non-optional, because it has
-/// nothing to return after reporting, so those three have to carry one in source. An
-/// endpoint that carries its own default supersedes the macro's: the default
-/// initialises the private storage the macro generates, so whatever is written here
-/// is what an unimplemented client runs, and the macro's reporting version is never
-/// reached.
+/// ``contains`` is the one endpoint that reports through a written-out default rather
+/// than the one `@DependencyClient` generates, and the duplication is load-bearing
+/// rather than untidy. The macro refuses to generate a default for a non-throwing
+/// endpoint returning a non-optional, because it has nothing to return after
+/// reporting, and ``contains`` returns `Bool` because "is there a value" has no third
+/// answer. An endpoint that carries its own default supersedes the macro's: the
+/// default initialises the private storage the macro generates, so whatever is
+/// written here is what an unimplemented client runs, and the macro's reporting
+/// version is never reached.
 ///
-/// That was measured, not assumed. Written as `= { _ in false }` the three read as
-/// unimplemented and report nothing, so a test touching one of them silently gets a
-/// plausible `false` while the other twelve fail loudly. `UserDefaultsClientOverrideTests`
-/// asserts a report from one of the three and one of the twelve, so a later edit that
-/// drops a `reportIssue` from here fails rather than quietly reopening the hole.
+/// That was measured, not assumed. Written as `= { _ in false }` such an endpoint
+/// reads as unimplemented and reports nothing, so a test touching it silently gets a
+/// plausible `false` while the rest fail loudly. ``bool``, ``int`` and ``double``
+/// carried the same duplication until they became optional, which is one of the
+/// reasons they did: the macro generates their defaults now.
+/// `UserDefaultsClientOverrideTests` calls every endpoint on an unimplemented client
+/// and requires a report from each, so a later edit that drops the `reportIssue`
+/// below, or adds a second endpoint that needs one, fails rather than quietly
+/// reopening the hole.
 ///
 /// ## Concurrency
 ///
@@ -78,35 +100,54 @@ public struct UserDefaultsClient: Sendable {
 
     // MARK: - Reading Values
 
-    /// Retrieves a Boolean value for the specified key, or `false` if there is none.
-    public var bool: @Sendable (_ forKey: String) -> Bool = { _ in
-        reportIssue("Unimplemented: '\(Self.self).bool'")
-        return false
-    }
+    /// Retrieves a Boolean value for the specified key, or `nil` if the key holds
+    /// nothing.
+    public var bool: @Sendable (_ forKey: String) -> Bool?
 
-    /// Retrieves an integer value for the specified key, or `0` if there is none.
-    public var int: @Sendable (_ forKey: String) -> Int = { _ in
-        reportIssue("Unimplemented: '\(Self.self).int'")
-        return 0
-    }
+    /// Retrieves an integer value for the specified key, or `nil` if the key holds
+    /// nothing.
+    public var int: @Sendable (_ forKey: String) -> Int?
 
-    /// Retrieves a double value for the specified key, or `0` if there is none.
-    public var double: @Sendable (_ forKey: String) -> Double = { _ in
-        reportIssue("Unimplemented: '\(Self.self).double'")
-        return 0
-    }
+    /// Retrieves a double value for the specified key, or `nil` if the key holds
+    /// nothing.
+    public var double: @Sendable (_ forKey: String) -> Double?
 
-    /// Retrieves a string value for the specified key, or `nil` if there is none.
+    /// Retrieves a string value for the specified key, or `nil` if there is no string
+    /// reading of what it holds.
     public var string: @Sendable (_ forKey: String) -> String?
 
-    /// Retrieves an array of strings for the specified key, or `nil` if there is none.
+    /// Retrieves an array of strings for the specified key, or `nil` unless it holds
+    /// an array whose elements are all strings.
     public var stringArray: @Sendable (_ forKey: String) -> [String]?
 
-    /// Retrieves a raw object for the specified key, or `nil` if there is none.
-    public var object: @Sendable (_ forKey: String) -> Any?
-
-    /// Retrieves a `Date` value for the specified key, or `nil` if there is none.
+    /// Retrieves a `Date` value for the specified key, or `nil` if it holds anything
+    /// else. A number is not read as a time interval.
     public var date: @Sendable (_ forKey: String) -> Date?
+
+    /// Retrieves a `Data` value for the specified key, or `nil` if it holds anything
+    /// else. A string is not decoded into its bytes.
+    public var data: @Sendable (_ forKey: String) -> Data?
+
+    /// Retrieves a `URL` value for the specified key, or `nil` unless the text it
+    /// holds parses as a URL with a scheme.
+    ///
+    /// A URL is stored as its `absoluteString`, so ``string`` reads the same key as
+    /// text and any stored string that is an absolute URL reads through here. This is
+    /// deliberately not what `UserDefaults.url(forKey:)` does; `StoredURL` records the
+    /// measurements behind that.
+    public var url: @Sendable (_ forKey: String) -> URL?
+
+    // MARK: - Presence
+
+    /// Reports whether the specified key holds a value.
+    ///
+    /// The reading that separates "nothing here" from "something with no reading of
+    /// the type you asked for". A stored `Date` is `nil` through ``string`` and `true`
+    /// through this.
+    public var contains: @Sendable (_ key: String) -> Bool = { _ in
+        reportIssue("Unimplemented: '\(Self.self).contains'")
+        return false
+    }
 
     // MARK: - Writing Values
 
@@ -125,16 +166,38 @@ public struct UserDefaultsClient: Sendable {
     /// Stores an array of strings for the specified key, or removes it when `nil`.
     public var setStringArray: @Sendable ([String]?, _ forKey: String) -> Void
 
-    /// Stores a raw object for the specified key, or removes it when `nil`.
-    public var setObject: @Sendable (Any?, _ forKey: String) -> Void
-
     /// Stores a `Date` value for the specified key, or removes it when `nil`.
     public var setDate: @Sendable (Date?, _ forKey: String) -> Void
+
+    /// Stores a `Data` value for the specified key, or removes it when `nil`.
+    public var setData: @Sendable (Data?, _ forKey: String) -> Void
+
+    /// Stores a `URL` value for the specified key, or removes it when `nil`.
+    ///
+    /// Written as the URL's `absoluteString`. See ``url``.
+    public var setURL: @Sendable (URL?, _ forKey: String) -> Void
+
+    /// Stores a heterogeneous property list value for the specified key, or removes
+    /// it when `nil`.
+    ///
+    /// The way in for a value whose shape none of the typed setters describes, such as
+    /// a mixed array or a nested dictionary. ``PropertyListValue`` is built from
+    /// literals, so the call site usually looks the way it would have with `Any`:
+    ///
+    /// ```swift
+    /// userDefaults.setPropertyList(["launches": 3, "seen": true], forKey: "state")
+    /// ```
+    ///
+    /// It replaces an `Any?` endpoint that raised `NSInvalidArgumentException` from
+    /// inside `UserDefaults` when handed a value a property list cannot hold. That was
+    /// a crash no call site could catch and no signature warned about; there is now no
+    /// way to write the argument.
+    public var setPropertyList: @Sendable (PropertyListValue?, _ forKey: String) -> Void
 
     // MARK: - Deletion
 
     /// Removes the value associated with the specified key.
-    public var removeObject: @Sendable (_ forKey: String) -> Void
+    public var removeValue: @Sendable (_ forKey: String) -> Void
 
     // MARK: - Building One Over a Store
 
@@ -161,8 +224,8 @@ public struct UserDefaultsClient: Sendable {
     /// Routes every endpoint through `store`.
     ///
     /// The two public initialisers above are thin wrappers over this one so that the
-    /// fifteen-line mapping is written once. It is generic rather than taking the
-    /// protocol existentially because ``UserDefaultsStore`` is internal, and a public
+    /// mapping is written once. It is generic rather than taking the protocol
+    /// existentially because ``UserDefaultsStore`` is internal, and a public
     /// initialiser cannot name it.
     private init<Store: UserDefaultsStore>(routingThrough store: Store) {
         self.init(
@@ -171,16 +234,20 @@ public struct UserDefaultsClient: Sendable {
             double: { store.double(forKey: $0) },
             string: { store.string(forKey: $0) },
             stringArray: { store.stringArray(forKey: $0) },
-            object: { store.object(forKey: $0) },
             date: { store.date(forKey: $0) },
+            data: { store.data(forKey: $0) },
+            url: { store.url(forKey: $0) },
+            contains: { store.contains(key: $0) },
             setBool: { store.setBool($0, forKey: $1) },
             setInt: { store.setInt($0, forKey: $1) },
             setDouble: { store.setDouble($0, forKey: $1) },
             setString: { store.setString($0, forKey: $1) },
             setStringArray: { store.setStringArray($0, forKey: $1) },
-            setObject: { store.setObject($0, forKey: $1) },
             setDate: { store.setDate($0, forKey: $1) },
-            removeObject: { store.removeObject(forKey: $0) }
+            setData: { store.setData($0, forKey: $1) },
+            setURL: { store.setURL($0, forKey: $1) },
+            setPropertyList: { store.setPropertyList($0, forKey: $1) },
+            removeValue: { store.removeValue(forKey: $0) }
         )
     }
 }
