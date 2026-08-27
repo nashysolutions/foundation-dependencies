@@ -62,8 +62,16 @@ final class ItemA: Sendable {}
 final class ItemB: Sendable {}
 
 /// The instance the scoping article's second fence inherits dependencies from.
-/// The fence that creates it is illustrative and carries an elision, so the
-/// value has to come from somewhere; see the exemption recorded for it.
+///
+/// The first fence in that article does build an `itemA` — issue #40 de-elided
+/// it, and it now type-checks — but the second fence cannot reach it. The
+/// cross-fence resolver indexes declarations, not bindings, and widening it to
+/// index top-level bindings was measured and rejected: six fences across two
+/// articles open with `let store`, so any fence mentioning `store` would drag
+/// all six in and fail on the redeclarations. This binding is therefore not a
+/// stand-in for something uncheckable; it is the price of a resolver that is
+/// deliberately narrow, and it costs nothing, because the type it supplies is
+/// the same `ItemA` the first fence produces.
 let itemA = ItemA()
 
 extension Bundle {

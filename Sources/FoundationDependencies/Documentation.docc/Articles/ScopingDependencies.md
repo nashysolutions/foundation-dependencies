@@ -5,7 +5,10 @@ Dependency resolution is context-sensitive. Construct dependency-using objects *
 ## Incorrect
 
 ```swift
-let itemA = withDependencies { ... } operation: { ItemA() }
+var bundle = MainBundleClientKey.testValue
+bundle.extractName = { "Test App" }
+
+let itemA = withDependencies { $0.mainBundleClient = bundle } operation: { ItemA() }
 let itemB = ItemB() // Will use testValue unexpectedly
 ```
 

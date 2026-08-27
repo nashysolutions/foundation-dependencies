@@ -26,14 +26,21 @@ withDependencies {
 Override for all tests in a test case:
 
 ```swift
-override func invokeTest() {
-    var bundle = MainBundleClientKey.testValue
-    bundle.extractName = { "Test App" }
+import Dependencies
+import FoundationDependencies
+import XCTest
 
-    withDependencies {
-        $0.mainBundleClient = bundle
-    } operation: {
-        super.invokeTest()
+final class MainBundleTests: XCTestCase {
+
+    override func invokeTest() {
+        var bundle = MainBundleClientKey.testValue
+        bundle.extractName = { "Test App" }
+
+        withDependencies {
+            $0.mainBundleClient = bundle
+        } operation: {
+            super.invokeTest()
+        }
     }
 }
 ```
