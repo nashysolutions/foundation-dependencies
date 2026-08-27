@@ -25,7 +25,7 @@ let package = Package(
         // `IssueReporting` from `Dependencies`. Declared directly anyway, because
         // `UserDefaultsClient` calls `reportIssue` in its own source and a re-export
         // somebody else owns is not a dependency this package should rely on.
-        .package(url: "https://github.com/pointfreeco/xctest-dynamic-overlay", from: "1.4.0")
+        .package(url: "https://github.com/pointfreeco/xctest-dynamic-overlay.git", .upToNextMinor(from: "1.5.2"))
     ],
     targets: [
         .target(
