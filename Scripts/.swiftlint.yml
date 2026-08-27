@@ -1,0 +1,110 @@
+# SwiftLint configuration for `Scripts/`, nested under the package's root
+# `.swiftlint.yml`.
+#
+# Why this file exists
+# --------------------
+# `Scripts/` is linted, and until now it was not: `included` in the root file
+# listed `Package.swift`, `Sources` and `Tests` only, so the doc-example gate —
+# the thing that decides whether every published example in this package
+# compiles — was the one Swift file in the repository nothing checked.
+#
+# SwiftLint has no way to configure a rule differently per path from a single
+# file, so scoping has to be a nested configuration. This file is that scope and
+# nothing more. It is merged with the root file rather than replacing it, which
+# was confirmed by measurement rather than assumed: with this file present, a
+# bare `swiftlint lint` reports 34 files, the root rule set still applies to the
+# two files here, and `Sources` and `Tests` are unaffected.
+#
+# What it does NOT do
+# -------------------
+# Nothing here relaxes a rule for `Sources` or `Tests`. A nested configuration
+# cannot reach them, and that is the point: where a rule is intolerable for a
+# script but valuable for the library, the rule stays as it is for the library
+# and is calibrated here.
+#
+# Every other rule in the root file — including the whole opt-in set, and
+# including `todo` — applies to this directory unchanged. Only the three
+# thresholds below are moved, each because a build script legitimately has a
+# shape library code does not.
+#
+# No rule is silenced at a call site here, exactly as in the root file. The two
+# violations that were not about script shape were fixed rather than configured
+# away: `large_tuple` fired twice, on a fence-tracking tuple and a failure-
+# collecting tuple, and both became small structs (`OpenFence`,
+# `ExampleFailure`), which changed no behaviour. `todo` fired once, on prose
+# describing why to-do comments are deliberately unread by the gate; the
+# sentence was reworded so it no longer spells the marker, and the rule stays
+# on, so a real to-do in this directory still fails the build.
+
+file_length:
+  # `check-documentation-examples.swift` is 1450 lines, of which 576 are
+  # comment-only and 173 blank: 703 lines of actual code. Counting raw lines
+  # would report 1450 against a 1000-line limit and read as sprawl, when what
+  # the number mostly measures is how heavily the script is documented. A gate
+  # that penalises the documentation making a load-bearing script reviewable is
+  # pointed the wrong way, so comment-only lines are excluded and the threshold
+  # is set against the 703 that remain.
+  #
+  # The file cannot be split, and this is the constraint rather than a
+  # preference. CI runs it as `swift Scripts/check-documentation-examples.swift`,
+  # and `swift` in interpreter mode compiles exactly one file: a second path
+  # argument is passed to the script as an argument, not compiled, so a helper
+  # extracted to its own file is simply not in scope. Measured, not assumed —
+  # `swift a.swift b.swift` fails with `cannot find 'hello' in scope`. Splitting
+  # it therefore means an SPM executable target, which is a larger question this
+  # configuration deliberately does not prejudge.
+  #
+  # Headroom is real but bounded, so unchecked growth still fails.
+  ignore_comment_only_lines: true
+  warning: 800
+  error: 1000
+
+function_body_length:
+  # Two functions exceed the default 50: `scanBlock` at 53 and the doc-comment
+  # scanner at 59, both excluding comments and whitespace. Each is a single
+  # pass over a document maintaining fence state, and the length is the state
+  # machine rather than padding. Cutting either at 50 would split a loop whose
+  # branches only make sense read together, and refactoring the parser to
+  # satisfy a line count is exactly the change most likely to alter what the
+  # gate accepts.
+  warning: 70
+  error: 100
+
+cyclomatic_complexity:
+  # The doc-comment scanner measures 12 against a default of 10. The branches
+  # are the fence grammar — open or closed, Swift or Swift-ish or neither,
+  # terminated or not — and collapsing them would hide the grammar rather than
+  # simplify it. The error threshold is left at the default, so genuinely
+  # unbounded branching still fails.
+  warning: 15
+  error: 20
+
+# Where this gate stops, measured rather than reasoned about
+# ---------------------------------------------------------
+# A narrower gate that gets read as the full one is the risk this file
+# introduces, so the boundary is recorded here instead of being left for someone
+# to infer from the numbers above.
+#
+# Confirmed by planting each case and reading the exit code:
+#
+#   Caught. A `TODO` marker and a force unwrap, both added to
+#     `check-documentation-examples.swift`, failed `swiftlint --strict` with
+#     exit 2 and named the file:
+#       ...:429:17: error: Force Unwrapping Violation: ... (force_unwrapping)
+#       ...:426:4: error: Todo Violation: TODOs should be resolved (todo)
+#     So the root rule set, opt-in rules included, does reach this directory.
+#     This is not a directory that is linted in name only.
+#
+#   Not caught. A 60-line function body — over the default 50, under the 70 set
+#     above — passes here, exit 0. The same 60-line body pasted into
+#     `Sources/FoundationDependencies/UserDefaults/PropertyListValue.swift`
+#     fails, exit 2, at the unchanged 50:
+#       ...: error: Function Body Length Violation: Function body should span 50
+#       lines or less ... currently spans 61 lines (function_body_length)
+#     One body, two directories, two answers. That is the intended shape of the
+#     scoping, and it is also the proof the relaxation does not leak: the
+#     library's threshold is exactly where it was.
+#
+# So a function here may run to 70 lines, a file to 800 lines of non-comment
+# code, and a function to complexity 15, with nothing said. Past those, the
+# build fails as it does anywhere else in the package.

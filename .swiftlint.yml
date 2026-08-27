@@ -5,9 +5,19 @@
 # `.build` holds resolved dependency sources. Linting them is meaningless: they
 # are thousands of violations in code nobody working in this repo can change,
 # and they drown the package's own count. Measured on this tree, `swiftlint
-# lint .` reports 9191 violations across 931 files with no configuration, and 0
-# across 26 files with the `excluded` entry below and nothing else. Any
-# repo-wide number quoted without this file is noise.
+# lint .` reports 9195 violations across 939 files with no configuration, and 0
+# across 34 files with this file as written. Any repo-wide number quoted without
+# this file is noise.
+#
+# `Scripts` is in the list below. It was not until now, which meant
+# `Scripts/check-documentation-examples.swift` — the gate deciding whether every
+# published example in this package compiles — was the only Swift in the
+# repository nothing linted. The rule set could not simply be pointed at it
+# unchanged: a build script legitimately has a shape library code does not, so
+# three thresholds are calibrated for that directory in `Scripts/.swiftlint.yml`,
+# which is nested under this file and merged with it. Read that file too; it
+# records what was moved, by how much, and what was fixed instead of moved.
+# Nothing there reaches `Sources` or `Tests`, by construction.
 #
 # `included` and `excluded` both stay, and they do different jobs. `excluded` is
 # what removes `.build`, and it keeps doing so even when a path is passed
@@ -19,6 +29,15 @@
 # in SwiftLint 0.63 and exits 64 with `Unknown option`. The current form is
 # positional, `swiftlint lint Sources`. A gate still written the old way fails
 # as a tooling error that reads like a lint failure.
+#
+# A sharper version of the same trap, measured here while `Scripts` was still
+# outside `included`: because the two intersect, a positional path that is *not*
+# in `included` does not lint nothing and say so — it lints the intersection,
+# which is everything `included` already covered. `swiftlint lint Scripts` then
+# printed `Found 0 violations, 0 serious in 32 files` while reading no file in
+# `Scripts` at all. A gate written that way reports success for a directory it
+# never opened. Prefer a bare `swiftlint lint`, as the CI job does, and if a
+# path must be passed, check the file count is the one you expected.
 #
 # Rule set
 # --------
@@ -35,6 +54,7 @@
 
 included:
   - Package.swift
+  - Scripts
   - Sources
   - Tests
 
