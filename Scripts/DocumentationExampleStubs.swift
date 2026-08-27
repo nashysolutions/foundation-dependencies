@@ -10,14 +10,22 @@
 //  the obvious one — and there is nowhere else for such a type to come from.
 //  This file supplies them, and nothing else.
 //
-//  Two rules keep this file from quietly weakening the gate it supports.
+//  Three rules keep this file from quietly weakening the gate it supports.
 //
 //  First, only add a declaration here when the name genuinely belongs to the
 //  reader. A name this package is supposed to export belongs in `Sources`; if
 //  a fence cannot resolve one, that is the fence or the package being wrong,
 //  and stubbing it here would hide exactly the defect the gate exists to find.
 //
-//  Second, Swift resolves `import` per file, not per module. This file imports
+//  Second, these stubs are held to the same concurrency rules as the fences
+//  they support. This file is compiled alongside every fence, so a diagnostic
+//  raised here is raised against all of them: under complete checking a
+//  non-`Sendable` global here failed all twenty-nine fences at once, and the
+//  report named the stub rather than the example, which is a gate that cannot
+//  be read. The reader's stand-in types are therefore `Sendable`, which is
+//  also what a reader in the Swift 6 language mode would have to write.
+//
+//  Third, Swift resolves `import` per file, not per module. This file imports
 //  SwiftUI so that `ContentView` can be a `View`, and that import is invisible
 //  to every fence compiled alongside it. A fence that uses `App`, `Scene` or
 //  `WindowGroup` without importing SwiftUI itself still fails, which is the
@@ -38,14 +46,20 @@ struct ContentView: View {
 /// A stand-in for whatever the reader constructs inside a `withDependencies`
 /// operation. A class rather than a struct because the scoping article passes
 /// one of these to `withDependencies(from:)`, which requires a reference type.
-final class MyService {}
+///
+/// `Sendable` because it is stateless and crosses an isolation boundary in the
+/// fences that use it. A final class with no stored properties satisfies the
+/// conformance without `@unchecked`, so nothing is being asserted here that
+/// the compiler is not checking.
+final class MyService: Sendable {}
 
 /// The two collaborators in the dependency-scoping article. Both are reference
-/// types for the same reason `MyService` is.
-final class ItemA {}
+/// types for the same reason `MyService` is, and `Sendable` for the same
+/// reason it is.
+final class ItemA: Sendable {}
 
 /// The second collaborator in the dependency-scoping article.
-final class ItemB {}
+final class ItemB: Sendable {}
 
 /// The instance the scoping article's second fence inherits dependencies from.
 /// The fence that creates it is illustrative and carries an elision, so the

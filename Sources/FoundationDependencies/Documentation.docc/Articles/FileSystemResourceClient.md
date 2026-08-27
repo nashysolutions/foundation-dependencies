@@ -136,27 +136,32 @@ import Files
 import Foundation
 import FoundationDependencies
 
-func makeTemporaryStore() throws -> any FileSystemOperations {
+func makeTemporaryStore(subfolder: String) throws -> any FileSystemOperations {
     try FileSystemFolderStore(
         agent: FileManagerContext(),
         kind: .temporary,
-        subfolder: UUID().uuidString
+        subfolder: subfolder
     )
 }
 ```
 
 ```swift
-let store = try makeTemporaryStore()
-defer { try? FileManager.default.removeItem(at: store.folder.location) }
+let subfolder = UUID().uuidString
+let location = try makeTemporaryStore(subfolder: subfolder).folder.location
+defer { try? FileManager.default.removeItem(at: location) }
 
 withDependencies {
-    $0.fileSystemResourceClient = FileSystemResourceClient { _, _ in store }
+    $0.fileSystemResourceClient = FileSystemResourceClient { _, _ in
+        try makeTemporaryStore(subfolder: subfolder)
+    }
 } operation: {
     MyService()
 }
 ```
 
-The subfolder is a fresh UUID per store, so cases running in parallel cannot see each other's files, and the `defer` removes the folder rather than leaving one behind per case. Note that the factory ignores the directory and subfolder it is handed and returns the one store, which is what lets a test inspect afterwards the same folder the code under test wrote into.
+The subfolder is a fresh UUID per case, so cases running in parallel cannot see each other's files, and the `defer` removes the folder rather than leaving one behind per case.
+
+Note what the factory closure captures, because it is the part that is easy to get wrong. `FileSystemResourceClient.makeStore` is `@Sendable`, and `FileSystemOperations` is not `Sendable`, so a store built outside the closure and captured by it does not compile for a reader in the Swift 6 language mode. Capturing the subfolder name instead is what makes the closure sound: a `String` crosses the isolation boundary, and the store is constructed on the far side of it. `FileSystemFolderStore` creates its folder only if it is missing, so every call for the same subfolder lands on the same folder, which is what lets a test inspect afterwards the same folder the code under test wrote into. The directory and subfolder the closure is handed are ignored, deliberately, for the same reason.
 
 ### An In-Memory Context
 
